@@ -5,8 +5,7 @@ const expressJwt = require('express-jwt'); // 把 JWT 的 payload 部分赋值�
 const { signtoken, md5 } = require('./utils');
 const db = require('../database/db');
 
-const { getConfig, setConfig } = require('../config');
-const config = getConfig();
+const { config, setConfig } = require('../config');
 
 const router = express.Router();
 
@@ -46,10 +45,11 @@ router.post('/me', [
 });
 
 if (config.auth) {
-  router.get('/me', expressJwt({ secret: config.jwtsecret }));
+  router.get('/me', expressJwt({ secret: config.jwtsecret, algorithms: ['HS256'] }));
 }
 
 // 获取用户信息
+// eslint-disable-next-line no-unused-vars
 router.get('/me', (req, res, next) => {
   // 同时告诉客户端，服务器是否启用用户验证
   const auth = config.auth;
@@ -69,8 +69,8 @@ router.post('/user', [
     .withMessage('密码长度至少为 5'),
   check('group')
     .custom(value => {
-      if (value !== 'user' && value !== 'gaust') {
-        throw new Error(`用户组名称必须为 ['user', 'gaust'] 的一个.`)
+      if (value !== 'user' && value !== 'guest') {
+        throw new Error(`用户组名称必须为 ['user', 'guest'] 的一个.`)
       }
       return true
     })
@@ -192,7 +192,7 @@ router.put('/config', (req, res, next) => {
 router.get('/config', (req, res, next) => {
   if (!config.auth || req.user.name === 'admin') {
     try {
-      res.send({ config: getConfig() });
+      res.send({ config: config });
     } catch(err) {
       next(err);
     }
@@ -201,5 +201,39 @@ router.get('/config', (req, res, next) => {
   }
 });
 
+// 提交用户评价
+// eslint-disable-next-line no-unused-vars
+router.put('/review', (req, res, next) => {
+  let username = config.auth ? req.user.name : 'admin';
+  let starOnly = true;
+  let progressOnly = false;
+  if (req.query.starOnly === 'false') {
+    starOnly = false;
+  }
+  if (req.query.progressOnly === 'true') {
+    progressOnly = true
+  }
+  
+  db.updateUserReview(username, req.body.work_id, req.body.rating, req.body.review_text, req.body.progress, starOnly, progressOnly)
+      .then(() => {
+        if (progressOnly) {
+          res.send({ message: '更新进度成功' });
+        } else {
+          res.send({ message: '评价成功' });
+        }
+      }).catch((err) =>{
+        res.status(500).send({ error: '评价失败，服务器错误' });
+        console.error(err);
+      })
+});
+
+// 删除用户标记
+router.delete('/review', (req, res, next) => {
+  let username = config.auth ? req.user.name : 'admin';
+  db.deleteUserReview(username, req.query.work_id)
+    .then(() => {
+      res.send({message: '删除标记成功'});
+    }).catch((err) => next(err));
+});
 
 module.exports = router;

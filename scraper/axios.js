@@ -1,8 +1,8 @@
 const originAxios = require('axios');
 const { httpsOverHttp, httpOverHttp } = require('tunnel-agent');
 
-const { getConfig } = require('../config');
-const Config = getConfig();
+const { config } = require('../config');
+const Config = config;
 
 const axios = originAxios.create();
 // axios.defaults.timeout = Config.timeout || 2000; // 请求超时的毫秒数
@@ -69,14 +69,14 @@ axios.interceptors.request.use(function (config) {
 
 
 const retryGet = async (url, config) => {
-  let defaultLimit = Config.retry || 5;;
+  let defaultLimit = Config.retry || 5;
   let defaultRetryDelay = Config.retryDelay || 2000;
   let defaultTimeout = 10000;
 
   if (url.indexOf('dlsite') !== -1) {
     defaultTimeout = Config.dlsiteTimeout || defaultLimit;
   } else if (url.indexOf('hvdb') !== -1) {
-    defaultTimeout = Config.hvdbTimeout || defaultLimit;;
+    defaultTimeout = Config.hvdbTimeout || defaultLimit;
   }
 
   config.retry = {

@@ -9,8 +9,7 @@ const { createSchema } = require('../database/schema');
 const { getFolderList, deleteCoverImageFromDisk, saveCoverImageToDisk } = require('./utils');
 const { md5 } = require('../auth/utils');
 
-const { getConfig } = require('../config');
-const config = getConfig();
+const { config } = require('../config');
 
 // 只有在子进程中 process 对象才有 send() 方法
 process.send = process.send || function () {};
@@ -192,7 +191,7 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
  * 从 DLsite 下载封面图片，并保存到 Images 文件夹，
  * 返回一个 Promise 对象，处理结果: 'added' or 'failed'
  * @param {number} id work id
- * @param {Array} types img types: ['main', 'sam', 'sam@2x', 'sam@3x']
+ * @param {Array} types img types: ['main', 'sam', 'sam@2x', 'sam@3x', '240x240', '360x360']
  */
 const getCoverImage = (id, types) => {
   const rjcode = (`000000${id}`).slice(-6); // zero-pad to 6 digits
@@ -200,7 +199,10 @@ const getCoverImage = (id, types) => {
   const rjcode2 = (`000000${id2}`).slice(-6); // zero-pad to 6 digits
   const promises = [];
   types.forEach(type => {
-    const url = `https://img.dlsite.jp/modpub/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_${type}.jpg`;
+    let url = `https://img.dlsite.jp/modpub/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_${type}.jpg`;
+    if (type === '240x240'|| type === '360x360') {
+      url = `https://img.dlsite.jp/resize/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_main_${type}.jpg`;
+    }
     promises.push(
       axios.retryGet(url, { responseType: "stream", retry: {} })
         .then((imageRes) => {
@@ -257,7 +259,7 @@ const processFolder = (folder) => db.knex('t_work')
   .first()
   .then((res) => {
     const rjcode = (`000000${folder.id}`).slice(-6); // zero-pad to 6 digits
-    const coverTypes = ['main', 'sam'];
+    const coverTypes = ['main', 'sam', '240x240'];
     const count = res['count(*)'];
     if (count) { // 查询数据库，检查是否已经写入该音声的元数据
       // 已经成功写入元数据
@@ -314,37 +316,37 @@ const processFolderLimited = (folder) => {
 /**
  * 清理本地不再存在的音声: 将其元数据从数据库中移除，并删除其封面图片
  */
-const performCleanup = () => {
-  return db.knex('t_work')
-    .select('id', 'root_folder', 'dir')
-    .then((works) => {
-      const promises = works.map(work => new Promise((resolve, reject) => {
-        // 检查每个音声的根文件夹或本地路径是否仍然存在
-        const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder);
-        if (!rootFolder || !fs.existsSync(path.join(rootFolder.path, work.dir))) {
-          db.removeWork(work.id) // 将其数据项从数据库中移除
-            .then((result) => { // 然后删除其封面图片
-              const rjcode = (`000000${work.id}`).slice(-6); // zero-pad to 6 digits
-              deleteCoverImageFromDisk(rjcode)    
-                .catch((err) => {
-                  if (err && err.code !== 'ENOENT') { 
-                    console.error(`  ! [RJ${rjcode}] 在删除封面过程中出错: ${err.message}`);
-                    addMainLog({
-                      level: 'error',
-                      message: `[RJ${rjcode}] 在删除封面过程中出错: ${err.message}`
-                    });
-                  }
-                })
-                .then(() => resolve(result));
+const performCleanup = async () => {
+  const trxProvider = db.knex.transactionProvider();
+  const trx = await trxProvider();
+  const works = await trx('t_work').select('id', 'root_folder', 'dir');
+  const promises = works.map(work => new Promise((resolve, reject) => {
+    // 检查每个音声的根文件夹或本地路径是否仍然存在
+    const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder);
+    if (!rootFolder || !fs.existsSync(path.join(rootFolder.path, work.dir))) {
+      db.removeWork(work.id, trxProvider) // 将其数据项从数据库中移除
+        .then((result) => { // 然后删除其封面图片
+          const rjcode = (`000000${work.id}`).slice(-6); // zero-pad to 6 digits
+          deleteCoverImageFromDisk(rjcode)    
+            .catch((err) => {
+              if (err && err.code !== 'ENOENT') { 
+                console.error(`  ! [RJ${rjcode}] 在删除封面过程中出错: ${err.message}`);
+                addMainLog({
+                  level: 'error',
+                  message: `[RJ${rjcode}] 在删除封面过程中出错: ${err.message}`
+                });
+              }
             })
-            .catch(err => reject(err));
-        } else {
-          resolve();
-        }
-      }));
+            .then(() => resolve(result));
+        })
+        .catch(err => reject(err));
+    } else {
+      resolve();
+    }
+  }));
 
-      return Promise.all(promises);
-    });
+  await Promise.all(promises);
+  trx.commit();
 };
 
 /**
@@ -385,30 +387,34 @@ const performScan = () => {
         }
       }
 
-      try {
-        console.log(' * 清理本地不再存在的音声的数据与封面图片...');
-        addMainLog({
-          level: 'info',
-          message: '清理本地不再存在的音声的数据与封面图片...'
-        });
-
-        await performCleanup();
-
-        console.log(' * 清理完成. 现在开始扫描...');
-        addMainLog({
-          level: 'info',
-          message: '清理完成. 现在开始扫描...'
-        });
-      } catch(err) {
-        console.error(` ! 在执行清理过程中出错: ${err.message}`);
-        addMainLog({
-          level: 'error',
-          message: `在执行清理过程中出错: ${err.message}`
-        });
-
-        process.exit(1);
+      if (config.skipCleanup) {
+        console.log(' * 根据设置跳过清理.');
+      } else {
+        try {
+          console.log(' * 清理本地不再存在的音声的数据与封面图片...');
+          addMainLog({
+            level: 'info',
+            message: '清理本地不再存在的音声的数据与封面图片...'
+          });
+  
+          await performCleanup();
+  
+          console.log(' * 清理完成. 现在开始扫描...');
+          addMainLog({
+            level: 'info',
+            message: '清理完成. 现在开始扫描...'
+          });
+        } catch(err) {
+          console.error(` ! 在执行清理过程中出错: ${err.message}`);
+          addMainLog({
+            level: 'error',
+            message: `在执行清理过程中出错: ${err.message}`
+          });
+  
+          process.exit(1);
+        }
       }
-      
+
       let folderList = [];
       try {
         for (const rootFolder of config.rootFolders) {
@@ -565,15 +571,16 @@ const updateMetadata = (id) => {
 
 const updateMetadataLimited = (id) => limitP.call(updateMetadata, id);
 
+// eslint-disable-next-line no-unused-vars
 const performUpdate = () => db.knex('t_work').select('id')
   .then((works) => {
     let processedNum = 0;
     const counts = {
       updated: 0,
       failed: 0,
-    };
+    }; 
 
-    for (work of works) {
+    for (let work of works) {
       updateMetadataLimited(work.id)
         .then((result) => { // 统计处理结果
           result === 'failed' ? counts['failed'] += 1 : counts['updated'] += 1;

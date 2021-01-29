@@ -4,8 +4,14 @@ const stringRandom = require('string-random');
 
 const configFolderDir = process.pkg ? path.join(process.execPath, '..', 'config') : path.join(__dirname, 'config');
 const configPath = path.join(configFolderDir, 'config.json');
+const pjson = require('./package.json');
+
+const versionWithoutVerTracking = '0.4.1';
+
+let config = {};
 
 const defaultConfig = {
+  version: pjson.version,
   maxParallelism: 16,
   rootFolders: [
     // {
@@ -27,14 +33,38 @@ const defaultConfig = {
   hvdbTimeout: 10000,
   retryDelay: 2000,
   httpProxyHost: '',
-  httpProxyPort: 0
+  httpProxyPort: 0,
+  listenPort: 8888,
+  httpsEnabled: false,
+  httpsPrivateKey: 'kikoeru.key',
+  httpsCert: 'kikoeru.crt',
+  httpsPort: 8443,
+  skipCleanup: false
 };
 
-const initConfig = () => fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, "\t"));
+const initConfig = () => {
+  config = Object.assign(config, defaultConfig);
+  fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, "\t"));
+}
 
-const setConfig = (newConfig) => fs.writeFileSync(configPath, JSON.stringify(newConfig, null, "\t"));
+const setConfig = newConfig => {
+  config = Object.assign(config, newConfig);
+  fs.writeFileSync(configPath, JSON.stringify(newConfig, null, "\t"));
+}
 
-const getConfig = () => JSON.parse(fs.readFileSync(configPath));
+// Get or use default value
+const getConfig = () => {
+  config = JSON.parse(fs.readFileSync(configPath));
+  for (let key in defaultConfig) {
+    if (!config.hasOwnProperty(key)) {
+      if (key === 'version') {
+        config['version'] = versionWithoutVerTracking;
+      } else {
+        config[key] = defaultConfig[key];
+      }
+    }
+  }
+};
 
 if (!fs.existsSync(configPath)) {
   if (!fs.existsSync(configFolderDir)) {
@@ -45,9 +75,27 @@ if (!fs.existsSync(configPath)) {
     }
   }
   initConfig();
+} else {
+  getConfig();
 }
 
+// Migrate config
+const updateConfig = () => {
+  let cfg = JSON.parse(fs.readFileSync(configPath));
+  let countChanged = 0;
+  for (let key in defaultConfig) {
+    if (!cfg.hasOwnProperty(key)) {
+      console.log('写入设置', key);
+      cfg[key] = defaultConfig[key];
+      countChanged += 1;
+    }
+  }
+  if (countChanged || cfg.version !== pjson.version) {
+    cfg.version = pjson.version;
+    setConfig(cfg)
+  }
+}
 
 module.exports = {
-  setConfig, getConfig
+  setConfig, updateConfig, config
 };

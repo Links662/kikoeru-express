@@ -3,8 +3,7 @@ const path = require('path');
 const recursiveReaddir = require('recursive-readdir');
 const { orderBy } = require('natural-orderby');
 
-const { getConfig } = require('../config');
-const config = getConfig();
+const { config } = require('../config');
 
 /**
  * Returns list of playable tracks in a given folder. Track is an object
@@ -18,7 +17,10 @@ const getTrackList = (id, dir) => recursiveReaddir(dir)
     const filteredFiles = files.filter((file) => {
       const ext = path.extname(file);
 
-      return (ext === '.mp3' || ext === '.ogg' || ext === '.opus' || ext === '.wav' || ext === '.flac' || ext === '.webm' || ext === '.mp4'|| ext === '.m4a');
+      return (ext === '.mp3' || ext === '.ogg' || ext === '.opus' || ext === '.wav' 
+        || ext === '.flac' || ext === '.webm' || ext === '.mp4'|| ext === '.m4a' 
+        || ext === '.txt' || ext === '.lrc' || ext === '.srt' || ext === '.ass'
+        || ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.webp');
     });
 
     // Sort by folder and title
@@ -29,8 +31,9 @@ const getTrackList = (id, dir) => recursiveReaddir(dir)
       return {
         title: path.basename(file),
         subtitle: dirName === '.' ? null : dirName,
+        ext: path.extname(file),
       };
-    }), [v => v.subtitle, v => v.title]);
+    }), [v => v.subtitle, v => v.title, v => v.ext]);
 
     // Add hash to each file
     const sortedHashedFiles = sortedFiles.map(
@@ -38,6 +41,7 @@ const getTrackList = (id, dir) => recursiveReaddir(dir)
         title: file.title,
         subtitle: file.subtitle,
         hash: `${id}/${index}`,
+        ext: file.ext,
       }),
     );
 
@@ -78,12 +82,28 @@ const toTree = (tracks, workTitle) => {
       fatherFolder = fatherFolder.find(item => item.type === 'folder' && item.title === folderName).children;
     });
 
-    fatherFolder.push({
-      type: 'file',
-      hash: track.hash,
-      title: track.title,
-      workTitle
-    });
+    if (track.ext === '.txt' || track.ext === '.lrc' || track.ext === '.srt' || track.ext === '.ass') {
+      fatherFolder.push({
+        type: 'text',
+        hash: track.hash,
+        title: track.title,
+        workTitle
+      });
+    } else if (track.ext === '.jpg' || track.ext === '.jpeg' || track.ext === '.png' || track.ext === '.webp' ) {
+      fatherFolder.push({
+        type: 'image',
+        hash: track.hash,
+        title: track.title,
+        workTitle
+      });
+    } else {
+      fatherFolder.push({
+        type: 'file',
+        hash: track.hash,
+        title: track.title,
+        workTitle
+      });
+    }
   });
 
   return tree;
@@ -121,7 +141,7 @@ async function* getFolderList(rootFolder, current = '', depth = 0) { // 异步�
  * @param {String} rjcode Work RJ code (only the 6 digits, zero-padded).
  */
 const deleteCoverImageFromDisk = rjcode => new Promise((resolve, reject) => {
-  const types = ['main', 'sam'];
+  const types = ['main', 'sam', '240x240', '360x360'];
   types.forEach(type => {
     try {
       fs.unlinkSync(path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`));
@@ -137,7 +157,7 @@ const deleteCoverImageFromDisk = rjcode => new Promise((resolve, reject) => {
  * Saves cover image to disk.
  * @param {ReadableStream} stream Image data stream.
  * @param {String} rjcode Work RJ code (only the 6 digits, zero-padded).
- * @param {String} types img type: ('main', 'sam', 'sam@2x' or 'sam@3x').
+ * @param {String} types img type: ('main', 'sam', 'sam@2x', 'sam@3x', '240x240', '360x360').
  */
 const saveCoverImageToDisk = (stream, rjcode, type) => new Promise((resolve, reject) => {
   // TODO: don't assume image is a jpg?
