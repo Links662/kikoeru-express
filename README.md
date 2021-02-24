@@ -5,6 +5,7 @@
 
 ### 功能介绍
 - 从 DLSite 爬取音声元数据
+- 对音声标记进度、打星、写评语
 - 通过标签或关键字快速检索想要找到的音声
 - 根据音声元数据对检索结果进行排序
 - 可以选择通过 JWT 验证用户或关闭用户认证功能
@@ -12,7 +13,7 @@
 - 支持为音声库添加多个根文件夹
 
 ### 源码安装部署
-将kikoeru-quasar项目生成的SPA文件夹全部文件置于`dist`文件夹下，确保`dist/index.html`存在，然后：
+将kikoeru-quasar项目生成的SPA或PWA文件夹全部文件置于`dist`文件夹下，确保`dist/index.html`存在，然后：
 ```bash
 # 安装依赖
 npm install
@@ -22,6 +23,11 @@ npm start
 
 # Express listening on http://[::]:8888
 ```
+关于选择PWA还是SPA：  
+区别仅仅在于有无Service Worker，由于Service Worker只能在本地和HTTPS上运行，因此如果远程以HTTP方式打开，PWA和SPA二者没有任何区别。也就是说，如果Kikoeru的主要用途是在移动设备上局域网播放，并且您没有配置HTTPS证书，那么实际上打开的都是SPA。  
+PWA的优点：基本页面零延迟，可以像手机APP一样通过浏览器“添加到桌面”的方式安装成App。作者自己使用的前端版本。  
+缺点：更新新版本时需要至少多刷新一次。  
+
 本项目还有打包好的 **Windows 系统下可用的 exe 可执行文件**与 **docker 镜像**版本，docker镜像及docker-compose的使用说明详见[**用户文档**](./%E7%94%A8%E6%88%B7%E6%96%87%E6%A1%A3.md)  
 使用docker-compose只需调整`docker-compose.yml`内的挂载位置以符合您的存储路径即可。
 
@@ -42,23 +48,28 @@ npm start
 
 ### 项目目录结构
 ```
-├── auth/                    # 用户认证相关路由
+├── routes/                  # 主要路由
 ├── config/                  # 存放配置文件
 ├── covers/                  # 存放音声封面
 ├── database/                # 操作数据库相关代码
-├── dist/                    # 存放前端项目 kikoeru-quasar 构建的 SPA
+├── dist/                    # 存放前端项目 kikoeru-quasar 构建的 PWA
 ├── filesystem/              # 存放扫描相关代码
 ├── package/                 # 存放 pkg 打包后的可执行文件
+├── package-macos/           # 存放 pkg 打包后的可执行文件
 ├── scraper/                 # 存放爬虫相关代码
 ├── sqlite/                  # 存放 sqlite 数据库文件
 ├── static/                  # 存放静态资源
 ├── .gitignore               # git 忽略路径
+├── .dockerignore            # Docker 忽略路径
 ├── api.js                   # 为 express 实例添加路由与 jwt 验证中间件
 ├── app.js                   # 项目入口文件
-├── config.js                # 用于生成与修改 config.json 配置文件
+├── socket.js                # 用于初始化socket.io
+├── config.js                # 用于生成与修改 config.json 配置文件，导出公共配置以及升级锁
 ├── Dockerfile               # 用于构建 docker 镜像的文本文件
+├── docker-compose.yml       # 用于使用docker-compose一键构建环境
 ├── package.json             # npm 脚本和依赖项
-└── routes.js                # 主要路由
+├── eslintrc.json            # ESLint
+├── Changelog.md             # 最近的版本历史
 ```
 
 
@@ -73,11 +84,11 @@ npm start
 - [x] 用户评价
 - [x] 修复面条代码里的placeholders
 - [x] 升级sqlite等
-- [ ] 刷新元数据
+- [x] 刷新元数据
 - [x] 不清理作品
 - [x] 修复扫描阻塞
 - [ ] 使用ID标识文件夹
-- [ ] 整理路由等
+- [x] 整理路由等
 - [ ] 单元测试、CI
 - [ ] Insersection Observer
 - [ ] 可编辑标签

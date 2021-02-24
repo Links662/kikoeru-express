@@ -8,8 +8,10 @@ const db = require('../database/db');
 const { createSchema } = require('../database/schema');
 const { getFolderList, deleteCoverImageFromDisk, saveCoverImageToDisk } = require('./utils');
 const { md5 } = require('../auth/utils');
+const { nameToUUID } = require('../scraper/utils');
 
 const { config } = require('../config');
+const { updateLock } = require('../upgrade');
 
 // 只有在子进程中 process 对象才有 send() 方法
 process.send = process.send || function () {};
@@ -80,6 +82,22 @@ const addMainLog = (log) => {
     }
   });
 };
+
+const emitMainLog = (message, level = 'info', truncate = 3) => {
+  console.log(message);
+  addMainLog({
+    level: level,
+    message: message.substring(truncate)
+  });
+};
+
+const emitTaskLog = (message, rjcode, level = 'info', truncate = 15) => {
+  console.log(message);
+  addLogForTask(rjcode, {
+    level: level,
+    message: message.substring(truncate)
+  });
+}
 
 process.on('message', (m) => {
   if (m.emit === 'SCAN_INIT_STATE') {
@@ -387,6 +405,31 @@ const performScan = () => {
         }
       }
 
+      const counts = {
+        added: 0,
+        failed: 0,
+        skipped: 0,
+        updated: 0
+      };
+
+
+      // Fix hash collision bug in t_va
+      // Scan to repopulate the Voice Actor data for those problematic works
+      // かの仔 and こっこ
+      let fixVAFailed = false;
+      if (updateLock.isLockFilePresent && updateLock.lockFileConfig.fixVA) {
+        emitMainLog(' * 开始进行声优元数据修复，需要联网');
+        try {
+          const updateResult = await fixVoiceActorBug();
+          counts.updated += updateResult;
+          updateLock.removeLockFile();
+          emitMainLog(' * 完成元数据修复');
+        } catch (err) {
+          emitMainLog(err.toString(), 'error');
+          fixVAFailed = true;
+        }
+      }
+
       if (config.skipCleanup) {
         console.log(' * 根据设置跳过清理.');
       } else {
@@ -439,12 +482,6 @@ const performScan = () => {
       }
 
       try {
-        const counts = {
-          added: 0,
-          failed: 0,
-          skipped: 0,
-        };
-
         // 去重，避免在之后的并行处理文件夹过程中，出现对数据库同时写入同一条记录的错误
         const uniqueFolderList = uniqueArr(folderList).uniqueArr;
         const duplicate = uniqueArr(folderList).duplicate
@@ -514,15 +551,19 @@ const performScan = () => {
         );
 
         return Promise.all(promises).then(() => {
-          console.log(` * 扫描完成: 新增 ${counts.added} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`);
+          const message = counts.updated ?  `扫描完成: 更新 ${counts.updated} 个，新增 ${counts.added} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.` : `扫描完成: 新增 ${counts.added} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`;
+          console.log(` * ${message}`);
           process.send({
             event: 'SCAN_FINISHED',
             payload: {
-              message: `扫描完成: 新增 ${counts.added} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`
+              message: message
             }
           });
           
           db.knex.destroy();
+          if (fixVAFailed) {
+            process.exit(1);
+          }
           process.exit(0);
         });
       } catch (err) {
@@ -549,63 +590,82 @@ const performScan = () => {
 /**
  * 更新音声的动态元数据
  * @param {number} id work id
+ * @param {options = {}} options includeVA, includeTags
  */
-const updateMetadata = (id) => {
+const updateMetadata = (id, options = {}) => {
+  let scrapeProcessor = () => scrapeDynamicWorkMetadataFromDLsite(id);
+  if (options.includeVA || options.includeTags) {
+    // static + dynamic
+    scrapeProcessor = () => scrapeWorkMetadataFromDLsite(id, config.tagLanguage);
+  }
+
   const rjcode = (`000000${id}`).slice(-6); // zero-pad to 6 digits
-  return scrapeDynamicWorkMetadataFromDLsite(id) // 抓取该音声的元数据
+  addTask(rjcode); // addTask only accepts a string
+  return scrapeProcessor() // 抓取该音声的元数据
     .then((metadata) => {
       // 将抓取到的元数据插入到数据库
-      console.log(` -> [RJ${rjcode}] 元数据抓取成功，准备更新元数据...`);
+      emitTaskLog(` -> [RJ${rjcode}] 元数据抓取成功，准备更新元数据...`, rjcode);
       metadata.id = id;
-      return db.updateWorkMetadata(metadata)
+      return db.updateWorkMetadata(metadata, options)
         .then(() => {
-          console.log(` -> [RJ${rjcode}] 元数据更新成功`);
+          emitTaskLog(` -> [RJ${rjcode}] 元数据更新成功`, rjcode);
           return 'updated';
         });
     })
     .catch((err) => {
-      console.error(`  ! [RJ${rjcode}] 在抓取元数据过程中出错: ${err}`);
+      emitTaskLog(`  ! [RJ${rjcode}] 在抓取元数据过程中出错: ${err}`, rjcode, 'error');
       return 'failed';
     });
 };
 
 const updateMetadataLimited = (id) => limitP.call(updateMetadata, id);
+const updateVoiceActorLimited = (id) => limitP.call(updateMetadata, id, { includeVA: true });
 
 // eslint-disable-next-line no-unused-vars
-const performUpdate = () => db.knex('t_work').select('id')
-  .then((works) => {
-    let processedNum = 0;
+const performUpdate = () => {
+  const baseQuery = db.knex('t_work').select('id');
+  const processor = (id) => updateMetadataLimited(id);
+  return refreshWorks(baseQuery, 'id', processor);
+};
+
+const fixVoiceActorBug = () => {
+  const baseQuery = db.knex('r_va_work').select('va_id', 'work_id');
+  const filter = (query) => query.where('va_id', nameToUUID('かの仔')).orWhere('va_id', nameToUUID('こっこ'));
+  const processor = (id) => updateVoiceActorLimited(id);
+  return refreshWorks(filter(baseQuery), 'work_id', processor);
+};
+
+const refreshWorks = (query, idColumnName, processor) => {
+  return query.then(async (works) => {
     const counts = {
       updated: 0,
       failed: 0,
     }; 
 
-    for (let work of works) {
-      updateMetadataLimited(work.id)
+    const promises = works.map((work) => {
+      const workid = work[idColumnName];
+      const rjcode = (`000000${workid}`).slice(-6);
+      return processor(workid)
         .then((result) => { // 统计处理结果
           result === 'failed' ? counts['failed'] += 1 : counts['updated'] += 1;
-          processedNum += 1;
-          if (processedNum >= works.length) {
-            console.log(` * 完成元数据更新 ${counts.updated} and failed to update ${counts.failed} works.`);
-            process.exit(0);
-          }
-        });
+          tasks.find(task => task.rjcode === rjcode).result = result;
+          removeTask(rjcode);
+          addResult(rjcode, 'updated', counts.updated);
+      })
+    });
+    await Promise.all(promises);
+    emitMainLog(` * 完成元数据更新 ${counts.updated} 个，失败 ${counts.failed} 个.`);
+    if (counts.failed) {
+      const err =  new Error(' ! 未完成修复，请检查网络连接。或向作者报告错误');
+      err.name = '' // Remove 'Error:'
+      throw err;
     }
+
+    return counts.updated;
   });
+};
 
-  // process.send({
-  //   event: 'SCAN_ERROR',
-  //   payload: {
-  //     error: `在并行处理音声文件夹过程中出错: ${err.message}`
-  //   }
-  // });
-
+// Script entry, run as a child process
 performScan();
-
-// getCoverImage(250820, ['main', 'sam'])
-//   .then(res => {
-//     console.log(res)
-//   })
-//   .catch(err => {
-//     console.log(err)
-//   })
+// fixVoiceActorBug();
+// performUpdate();

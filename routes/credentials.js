@@ -1,63 +1,10 @@
 const express = require('express');
+const router = express.Router();
 const { check, validationResult } = require('express-validator'); // 后端校验
-const expressJwt = require('express-jwt'); // 把 JWT 的 payload 部分赋值于 req.user
-
-const { signtoken, md5 } = require('./utils');
+const { md5 } = require('../auth/utils');
+const { config} = require('../config');
 const db = require('../database/db');
 
-const { config, setConfig } = require('../config');
-
-const router = express.Router();
-
-// 用户登录
-router.post('/me', [
-  check('name')
-    .isLength({ min: 5 })
-    .withMessage('用户名长度至少为 5'),
-  check('password')
-    .isLength({ min: 5 })
-    .withMessage('密码长度至少为 5')
-], (req, res, next) => {
-  // Finds the validation errors in this request and wraps them in an object with handy functions
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(422).send({ errors: errors.array() });
-  }
-
-  const name = req.body.name;
-  const password = req.body.password;
-
-  db.knex('t_user')
-    .where('name', '=', name)
-    .andWhere('password', '=', md5(password))
-    .first()
-    .then((user) => {
-      if (!user) {
-        res.status(401).send({error: '用户名或密码错误.'});
-      } else {
-        const token = signtoken(user);
-        res.send({ token });
-      }
-    })
-    .catch((err) => {
-      next(err);
-    });
-});
-
-if (config.auth) {
-  router.get('/me', expressJwt({ secret: config.jwtsecret, algorithms: ['HS256'] }));
-}
-
-// 获取用户信息
-// eslint-disable-next-line no-unused-vars
-router.get('/me', (req, res, next) => {
-  // 同时告诉客户端，服务器是否启用用户验证
-  const auth = config.auth;
-  const user = config.auth
-    ? { name: req.user.name, group: req.user.group }
-    : { name: 'admin', group: 'administrator' }
-  res.send({ user, auth });
-});
 
 // 创建一个新用户 (只有 admin 账号拥有权限)
 router.post('/user', [
@@ -164,7 +111,8 @@ router.delete('/user', (req, res, next) => {
 
 // 获取所有用户
 router.get('/users', (req, res, next) => {
-  db.knex('t_user')
+  if (!config.auth || req.user.name === 'admin') {
+    db.knex('t_user')
     .select('name', 'group')
     .then((users) => {
       res.send({ users });
@@ -172,68 +120,9 @@ router.get('/users', (req, res, next) => {
     .catch((err) => {
       next(err);
     });
-});
-
-// 修改配置文件
-router.put('/config', (req, res, next) => {
-  if (!config.auth || req.user.name === 'admin') {
-    try {
-      setConfig(req.body.config);
-      res.send({ message: '保存成功.' })
-    } catch(err) {
-      next(err);
-    }
   } else {
-    res.status(401).send({ error: '只有 admin 账号能修改配置文件.' });
+    res.status(401).send({ error: '只有 admin 账号能浏览用户.' });
   }
-});
-
-// 获取配置文件
-router.get('/config', (req, res, next) => {
-  if (!config.auth || req.user.name === 'admin') {
-    try {
-      res.send({ config: config });
-    } catch(err) {
-      next(err);
-    }
-  } else {
-    res.status(401).send({ error: '只有 admin 账号能读取配置文件.' });
-  }
-});
-
-// 提交用户评价
-// eslint-disable-next-line no-unused-vars
-router.put('/review', (req, res, next) => {
-  let username = config.auth ? req.user.name : 'admin';
-  let starOnly = true;
-  let progressOnly = false;
-  if (req.query.starOnly === 'false') {
-    starOnly = false;
-  }
-  if (req.query.progressOnly === 'true') {
-    progressOnly = true
-  }
-  
-  db.updateUserReview(username, req.body.work_id, req.body.rating, req.body.review_text, req.body.progress, starOnly, progressOnly)
-      .then(() => {
-        if (progressOnly) {
-          res.send({ message: '更新进度成功' });
-        } else {
-          res.send({ message: '评价成功' });
-        }
-      }).catch((err) =>{
-        res.status(500).send({ error: '评价失败，服务器错误' });
-        console.error(err);
-      })
-});
-
-// 删除用户标记
-router.delete('/review', (req, res, next) => {
-  let username = config.auth ? req.user.name : 'admin';
-  db.deleteUserReview(username, req.query.work_id)
-    .then(() => {
-      res.send({message: '删除标记成功'});
-    }).catch((err) => next(err));
 });
 
 module.exports = router;

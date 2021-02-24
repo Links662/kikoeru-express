@@ -101,17 +101,36 @@ const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
  * 更新音声的动态元数据
  * @param {Object} work Work object.
  */
-const updateWorkMetadata = work => knex.transaction(trx => trx('t_work')
-  .where('id', '=', work.id)
-  .update({
-    dl_count: work.dl_count,
-    price: work.price,
-    review_count: work.review_count,
-    rate_count: work.rate_count,
-    rate_average_2dp: work.rate_average_2dp,
-    rate_count_detail: JSON.stringify(work.rate_count_detail),
-    rank: work.rank ? JSON.stringify(work.rank) : null
-  }));
+const updateWorkMetadata = (work, options = {}) => knex.transaction(async (trx) => {
+  await trx('t_work')
+    .where('id', '=', work.id)
+    .update({
+      dl_count: work.dl_count,
+      price: work.price,
+      review_count: work.review_count,
+      rate_count: work.rate_count,
+      rate_average_2dp: work.rate_average_2dp,
+      rate_count_detail: JSON.stringify(work.rate_count_detail),
+      rank: work.rank ? JSON.stringify(work.rank) : null
+    });
+  
+  if (options.includeVA) {
+    await trx('r_va_work').where('work_id', work.id).del();
+    for (const va of work.vas) {
+      await trx.raw('INSERT OR IGNORE INTO t_va(id, name) VALUES (?, ?)', [va.id, va.name]);
+      await trx.raw('INSERT OR IGNORE INTO r_va_work(va_id, work_id) VALUES (?, ?)', [va.id, work.id]);
+    }
+  }
+  if (options.includeTags) {
+    if (options.purgeTags) {
+      await trx('r_tag_work').where('work_id', work.id).del();
+    }
+    for (const tag of work.tags) {
+      await trx.raw('INSERT OR IGNORE INTO t_tag(id, name) VALUES (?, ?)', [tag.id, tag.name]);
+      await trx.raw('INSERT OR IGNORE INTO r_tag_work(tag_id, work_id) VALUES (?, ?)', [tag.id, work.id]);
+    }
+  }
+});
 
 
 /**
@@ -261,10 +280,6 @@ const cleanupOrphans = async (trxProvider, circle, tags, vas)  => {
   }
 
   await Promise.all(promises);
-
-  // for (const promise of promises) {
-  //   await promise;
-  // }
 };
 
 /**
@@ -449,68 +464,6 @@ const deleteUser = users => knex.transaction(trx => trx('t_user')
   .del());
 
 
-
-
-
-/**
- * 创建一个新用户收藏夹
- * @param {Object} favorite User Favorite object.
- */
-const createUserFavorite = (username, favorite) => knex.transaction(trx => trx('t_favorite')
-  .where('name', '=', favorite.name)
-  .andWhere('user_name', '=', username)
-  .first()
-  .then((res) => {
-    if (res) {
-      throw new Error(`用户 ${username} 的收藏夹 ${favorite.name} 已存在.`);
-    }
-    return trx('t_favorite')
-      .insert({
-        user_name: username,
-        name: favorite.name,
-        works: JSON.stringify(favorite.works)
-      });
-  }));
-
-/**
- * 更新用户收藏夹
- * @param {Object} favorite User favorite object.
- */
-const updateUserFavorite = (username, oldFavoriteName, newFavorite) => knex.transaction(trx => trx('t_favorite')
-  .where('name', '=', oldFavoriteName)
-  .andWhere('user_name', '=', username)
-  .first()
-  .then((res) => {
-    if (!res) {
-      throw new Error(`用户 ${username} 的收藏夹 $oldFavoriteName} 不存在.`);
-    }
-    return trx('t_favorite')
-      .where('name', '=', oldFavoriteName)
-      .andWhere('user_name', '=', username)
-      .update({
-        name: newFavorite.name,
-        works: JSON.stringify(newFavorite.works)
-      });
-  }));
-
-/**
- * 更新用户收藏夹
- * @param {String} user_name User name
- * @param {Array} favorites User favorites.
- */
-const deleteUserFavorites = (username, favoriteNames) => knex.transaction(trx => trx('t_favorite')
-  .where('user_name', '=', username)
-  .andWhere('name', 'in', favoriteNames)
-  .del());
-
-const getUserFavorites = username => knex('t_favorite')
-  .select('name', 'works')
-  .where('user_name', '=', username)
-  .then(favorites => favorites.map((favorite) => {
-    favorite.works = JSON.parse(favorite.works);
-    return favorite;
-  }));
-
 // 添加星标或评语或进度
 const updateUserReview = async (username, workid, rating, review_text = '', progress = '', starOnly = true, progressOnly= false) => knex.transaction(async(trx) => {
     //UPSERT
@@ -570,14 +523,16 @@ const getWorksWithReviews = ({username = '', limit = 1000, offset = 0, orderBy =
   `);
   
   let works = [];
+  let totalCount = 0;
   let query = () => trx('userMetadata').where('user_name', '=', username)
-  .orderBy(orderBy, sortOption).orderBy([{ column: 'release', order: 'desc'}, { column: 'id', order: 'desc' }])
-  .limit(limit).offset(offset);
+  .orderBy(orderBy, sortOption).orderBy([{ column: 'release', order: 'desc'}, { column: 'id', order: 'desc' }]);
 
   if (filter) {
-    works = await query().where('progress', '=', filter);
+    totalCount = await query().where('progress', '=', filter).count('id as count');
+    works = await query().where('progress', '=', filter).limit(limit).offset(offset);
   } else {
-    works = await query();
+    totalCount = await query().count('id as count');
+    works = await query().limit(limit).offset(offset);
   }
 
   if (works.length > 0) {
@@ -588,12 +543,11 @@ const getWorksWithReviews = ({username = '', limit = 1000, offset = 0, orderBy =
     })
   }
 
-  return works;
+  return {works, totalCount};
 });
 
 module.exports = {
   knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksByKeyWord, updateWorkMetadata, getLabels,
   createUser, updateUserPassword, resetUserPassword, deleteUser,
-  createUserFavorite, updateUserFavorite, deleteUserFavorites, getUserFavorites, 
   getWorksWithReviews, updateUserReview, deleteUserReview, databaseExist
 };
