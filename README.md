@@ -1,7 +1,7 @@
 # Kikoeru
-一个同人音声专用的音乐流媒体服务器，详细的使用说明见[**用户文档**](./%E7%94%A8%E6%88%B7%E6%96%87%E6%A1%A3.md)
+一个同人音声专用的音乐流媒体服务器，详细的使用说明见[**用户文档**](https://github.com/umonaca/kikoeru-express/wiki/%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E)
 
-![截图.png](https://i.loli.net/2020/04/22/hjXW4PdsaoIt97U.png)
+[![unstable build status](https://github.com/umonaca/kikoeru-express/actions/workflows/build-artifacts.yml/badge.svg)](https://github.com/umonaca/kikoeru-express/actions)
 
 ### 功能介绍
 - 从 DLSite 爬取音声元数据
@@ -28,7 +28,7 @@ npm start
 PWA的优点：基本页面零延迟，可以像手机APP一样通过浏览器“添加到桌面”的方式安装成App。作者自己使用的前端版本。  
 缺点：更新新版本时需要至少多刷新一次。  
 
-本项目还有打包好的 **Windows 系统下可用的 exe 可执行文件**与 **docker 镜像**版本，docker镜像及docker-compose的使用说明详见[**用户文档**](./%E7%94%A8%E6%88%B7%E6%96%87%E6%A1%A3.md)  
+本项目还有打包好的 **Windows 系统下可用的 exe 可执行文件**与 **docker 镜像**版本，docker镜像及docker-compose的使用说明详见[**用户文档**](https://github.com/umonaca/kikoeru-express/wiki/%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E)  
 使用docker-compose只需调整`docker-compose.yml`内的挂载位置以符合您的存储路径即可。
 
 ### 技术栈
@@ -112,3 +112,10 @@ PWA的优点：基本页面零延迟，可以像手机APP一样通过浏览器�
 
 ### 感谢
 本项目的大部分后端代码来自于开源项目 [kikoeru](https://github.com/nortonandrews/kikoeru)
+
+### 声明
+本项目作为开源软件，本身不包含任何版权内容或其它违反法律的内容。项目中的程序是为了个人用户管理自己所有的合法数据资料而设计的。  
+程序作者并不能防止内容提供商（如各类网站）或其它用户使用本程序提供侵权或其它非法内容。程序作者与使用本程序的各类内容提供商并无联系，不为其提供技术支持，也不为其不当使用承担法律责任。
+
+### 许可协议
+GNU General Public License v3.0

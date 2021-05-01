@@ -51,8 +51,16 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
       const $ = cheerio.load(data);
 
       // 标题
-      work.title = $(`a[href="${url}"] span`).text();
-  
+      work.title = $('meta[property="og:title"]').attr('content');
+      // fallback
+      if (work.title === undefined) {
+        work.title = $(`a[href="${url}"] span`).text();
+      }
+      
+      // 'xxxxx [circle_name] | DLsite' => 'xxxxx'
+      const titlePattern = / \[.+\] \| DLsite$/
+      work.title = work.title.replace(titlePattern, '');
+
       // 社团
       const circleElement = $('span[class="maker_name"]').children('a');
       const circleUrl = circleElement.attr('href');
@@ -61,15 +69,16 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
         ? { id: parseInt(circleUrl.substr(-10,5)), name: circleName }
         : {};
 
+      const workOutline = $('#work_outline');
       // NSFW
-      const R18 = $('#work_outline').children('tbody').children('tr').children('th')
+      const R18 = workOutline.children('tbody').children('tr').children('th')
         .filter(function() {
           return $(this).text() === AGE_RATINGS;
-        }).parent().children('td').text();
+        }).parent().children('td').find('span:first').text();
       work.nsfw = R18 === '18禁';
 
       // 贩卖日 (YYYY-MM-DD)
-      const release = $('#work_outline').children('tbody').children('tr').children('th')
+      const release = workOutline.children('tbody').children('tr').children('th')
         .filter(function() {
           return $(this).text() === RELEASE;
         }).parent().children('td').text().replace(/[^0-9]/ig,'');
@@ -78,7 +87,7 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
         : '';
 
       // 系列
-      const seriesElement = $('#work_outline').children('tbody').children('tr').children('th')
+      const seriesElement = workOutline.children('tbody').children('tr').children('th')
         .filter(function() {
           return $(this).text() === SERIES;
         }).parent().children('td').children('a');
@@ -93,7 +102,7 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
       }
       
       // 标签
-      $('#work_outline').children('tbody').children('tr').children('th')
+        workOutline.children('tbody').children('tr').children('th')
         .filter(function() {
           return $(this).text() === GENRE;
         }).parent().children('td').children('div').children('a').each(function() {
@@ -108,11 +117,11 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
         });
       
       // 声优
-      $('#work_outline').children('tbody').children('tr').children('th')
+        workOutline.children('tbody').children('tr').children('th')
         .filter(function() {
           return $(this).text() === VA;
         }).parent().children('td').children('a').each(function() {
-          const vaName = $(this).text();
+          const vaName = $(this).text().trim();
           work.vas.push({
             id: nameToUUID(vaName),
             name: vaName
@@ -171,9 +180,9 @@ const scrapeDynamicWorkMetadataFromDLsite = id => new Promise((resolve, reject) 
     .then(response => response.data[`RJ${rjcode}`])
     .then((data) => {
       const work = {};
-      work.dl_count = data.dl_count; // 售出数
-      work.rate_average_2dp = data.rate_average_2dp; // 平均评价
-      work.rate_count = data.rate_count; // 评价数量
+      work.dl_count = data.dl_count ? data.dl_count : "0"; // 售出数
+      work.rate_average_2dp = data.rate_average_2dp ? data.rate_average_2dp : 0.0; // 平均评价
+      work.rate_count = data.rate_count ? data.rate_count : 0; // 评价数量
       work.rate_count_detail = data.rate_count_detail; // 评价分布明细
       work.review_count = data.review_count; // 评论数量
       work.price = data.price; // 价格

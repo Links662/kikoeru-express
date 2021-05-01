@@ -4,8 +4,11 @@ const router = express.Router();
 const db = require('../database/db');
 const { getTrackList, toTree } = require('../filesystem/utils');
 const { config } = require('../config');
+const normalize = require('./utils/normalize')
 
 const PAGE_SIZE = config.pageSize || 12;
+
+
 
 // GET work cover image
 router.get('/cover/:id', (req, res, next) => {
@@ -29,7 +32,11 @@ router.get('/work/:id', (req, res, next) => {
     username = req.user.name;
   }
   db.getWorkMetadata(req.params.id, username)
-    .then(work => res.send(work))
+    .then(work => {
+      // work is an Array of length 1
+      normalize(work);
+      res.send(work[0]);
+    })
     .catch(err => next(err));
 });
 
@@ -43,7 +50,7 @@ router.get('/tracks/:id', (req, res, next) => {
       const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder);
       if (rootFolder) {
         getTrackList(req.params.id, path.join(rootFolder.path, work.dir))
-          .then(tracks => res.send(toTree(tracks, work.title)))
+          .then(tracks => res.send(toTree(tracks, work.title, work.dir, rootFolder)))
           .catch(() => res.status(500).send({error: '获取文件列表失败，请检查文件是否存在或重新扫描清理'}));
       } else {
         res.status(500).send({error: `找不到文件夹: "${work.root_folder}"，请尝试重启服务器或重新扫描.`});
@@ -81,6 +88,8 @@ router.get('/works', async (req, res, next) => {
       .orderBy([{ column: 'release', order: 'desc'}, { column: 'id', order: 'desc' }])
     }
 
+    works = normalize(works);
+    
     res.send({
       works,
       pagination: {
@@ -90,26 +99,38 @@ router.get('/works', async (req, res, next) => {
       }
     });
   } catch(err) {
-    res.status(500).send({error: '查询过程中出错'});
+    res.status(500).send({error: '服务器错误'});
     console.error(err)
     // next(err);
   }
 });
 
 // GET name of a circle/tag/VA
-router.get('/get-name/:field/:id', (req, res, next) => {
-  if (req.params.field === 'undefined') {
-    return res.send(null);
+router.get('/:field(circle|tag|va)s/:id', (req, res, next) => {
+  // In case regex matching goes wrong
+  const validFields = ['circle', 'tag', 'va'];
+  if (!validFields.includes(req.params.field)) {
+    const err = new Error(`无效的查询域：field: ${req.originalUrl}`)
+    return next(err)
   }
 
-  return db.knex(`t_${req.params.field}`)
-    .select('name')
-    .where('id', '=', req.params.id)
-    .first()
-    .then(name => res.send(name.name))
+  return db.getMetadata({field: req.params.field, id: req.params.id})
+    .then(item => {
+      if (item) {
+        res.send(item) 
+      } else {
+        const errorMessage= {
+          'circle': `社团${req.params.id}不存在`,
+          'tag': `标签${req.params.id}不存在`,
+          'va': `声优${req.params.id}不存在`
+        }
+        res.status(404).send({error: errorMessage[req.params.field]})
+      }
+    })
     .catch(err => next(err));
 });
 
+// eslint-disable-next-line no-unused-vars
 router.get('/search/:keyword?', async (req, res, next) => {
   const keyword = req.params.keyword ? req.params.keyword.trim() : '';
   const currentPage = parseInt(req.query.page) || 1;
@@ -134,6 +155,8 @@ router.get('/search/:keyword?', async (req, res, next) => {
         .orderBy([{ column: 'release', order: 'desc'}, { column: 'id', order: 'desc' }])
     }
 
+    works = normalize(works);
+
     res.send({
       works,
       pagination: {
@@ -144,12 +167,21 @@ router.get('/search/:keyword?', async (req, res, next) => {
     });
   } catch(err) {
     res.status(500).send({error: '查询过程中出错'});
-    next(err);
+    console.error(err);
+    // next(err);
   }
 });
 
 // GET list of work ids, restricted by circle/tag/VA
-router.get('/:field/:id', async (req, res, next) => {
+// eslint-disable-next-line no-unused-vars
+router.get('/:field(circle|tag|va)s/:id/works', async (req, res, next) => {
+  // In case regex matching goes wrong
+  const validFields = ['circle', 'tag', 'va'];
+  if (!validFields.includes(req.params.field)) {
+    const err = new Error(`无效的查询域：${req.originalUrl}`)
+    return next(err)
+  }
+
   const currentPage = parseInt(req.query.page) || 1;
   // 通过 "音声id, 贩卖日, 用户评价, 售出数, 评论数量, 价格, 平均评价, 全年龄新作" 排序
   // ['id', 'release', 'rating', 'dl_count', 'review_count', 'price', 'rate_average_2dp, 'nsfw']
@@ -172,6 +204,8 @@ router.get('/:field/:id', async (req, res, next) => {
       .orderBy([{ column: 'release', order: 'desc'}, { column: 'id', order: 'desc' }])
     }
 
+    works = normalize(works);
+
     res.send({
       works,
       pagination: {
@@ -182,12 +216,20 @@ router.get('/:field/:id', async (req, res, next) => {
     });
   } catch(err) {
     res.status(500).send({error: '查询过程中出错'});
-    next(err);
+    console.error(err);
+    // next(err);
   }
 });
 
 // GET list of circles/tags/VAs
-router.get('/(:field)s/', (req, res, next) => {
+router.get('/:field(circle|tag|va)s/', (req, res, next) => {
+  // In case regex matching goes wrong
+  const validFields = ['circle', 'tag', 'va'];
+  if (!validFields.includes(req.params.field)) {
+    const err = new Error(`无效的查询域：${req.originalUrl}`)
+    return next(err)
+  }
+
   const field = req.params.field;
   db.getLabels(field)
     .orderBy(`name`, 'asc')

@@ -17,6 +17,7 @@ router.post('/me', [
   check('password')
     .isLength({ min: 5 })
     .withMessage('密码长度至少为 5')
+// eslint-disable-next-line no-unused-vars
 ], (req, res, next) => {
   // Finds the validation errors in this request and wraps them in an object with handy functions
   const errors = validationResult(req);
@@ -33,6 +34,7 @@ router.post('/me', [
     .first()
     .then((user) => {
       if (!user) {
+        res.set("WWW-Authenticate", "Bearer realm=\"Authorization Required\"");
         res.status(401).send({error: '用户名或密码错误.'});
       } else {
         const token = signtoken(user);
@@ -40,7 +42,9 @@ router.post('/me', [
       }
     })
     .catch((err) => {
-      next(err);
+      console.error(err);
+      res.status(500).send({error: '服务器错误'});
+      // next(err);
     });
 });
 
