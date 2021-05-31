@@ -2,39 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { config } = require('../config');
 
-const databaseFolderDir = config.databaseFolderDir;
-if (!fs.existsSync(databaseFolderDir)) {
-  try {
-    fs.mkdirSync(databaseFolderDir, { recursive: true });
-  } catch(err) {
-    console.error(` ! 在创建存放数据库文件的文件夹时出错: ${err.message}`);
-  }
-}
-
-const databaseExist = fs.existsSync(path.join(databaseFolderDir, 'db.sqlite3'));
+const databaseExist = fs.existsSync(path.join(config.databaseFolderDir, 'db.sqlite3'));
 
 // knex 操作数据库
-const knex = require('knex')({
-  client: 'sqlite3', // 数据库类型
-  useNullAsDefault: true,
-  connection: { // 连接参数
-    filename: path.join(databaseFolderDir, 'db.sqlite3'),
-  },
-  acquireConnectionTimeout: 40000, // 连接计时器
-  pool: {
-    afterCreate: (conn, done) => {
-      conn.run('PRAGMA foreign_keys = ON;', function (err) {
-        if (err) {
-          done(err, conn);
-        } else {
-          conn.run(`PRAGMA busy_timeout = ${config.dbBusyTimeout};`, function (err) {
-            done(err, conn);
-          });
-        }
-      });
-    }
-  }
-});
+const connEnv = process.env.KNEX_ENV || process.env.NODE_ENV || 'development';
+const conn = require('./knexfile')[connEnv]
+const knex = require('knex')(conn);
 
 /**
  * Takes a work metadata object and inserts it into the database.
@@ -93,11 +66,12 @@ const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
             name: work.vas[i].name,
           }).toString().replace('insert', 'insert or ignore'),
       )
-        .then(() => trx('r_va_work')
-          .insert({
-            va_id: work.vas[i].id,
-            work_id: work.id,
-          })));
+        .then(() => trx.raw(
+          trx('r_va_work')
+            .insert({
+              va_id: work.vas[i].id,
+              work_id: work.id,
+            }).toString().replace('insert', 'insert or ignore'))));
     }
 
     return Promise.all(promises)
@@ -118,17 +92,17 @@ const updateWorkMetadata = (work, options = {}) => knex.transaction(async (trx) 
       rate_count: work.rate_count,
       rate_average_2dp: work.rate_average_2dp,
       rate_count_detail: JSON.stringify(work.rate_count_detail),
-      rank: work.rank ? JSON.stringify(work.rank) : null
+      rank: work.rank ? JSON.stringify(work.rank) : null,
     });
-  
-  if (options.includeVA) {
+
+  if (options.includeVA || options.refreshAll) {
     await trx('r_va_work').where('work_id', work.id).del();
     for (const va of work.vas) {
       await trx.raw('INSERT OR IGNORE INTO t_va(id, name) VALUES (?, ?)', [va.id, va.name]);
       await trx.raw('INSERT OR IGNORE INTO r_va_work(va_id, work_id) VALUES (?, ?)', [va.id, work.id]);
     }
   }
-  if (options.includeTags) {
+  if (options.includeTags || options.refreshAll) {
     if (options.purgeTags) {
       await trx('r_tag_work').where('work_id', work.id).del();
     }
@@ -136,6 +110,25 @@ const updateWorkMetadata = (work, options = {}) => knex.transaction(async (trx) 
       await trx.raw('INSERT OR IGNORE INTO t_tag(id, name) VALUES (?, ?)', [tag.id, tag.name]);
       await trx.raw('INSERT OR IGNORE INTO r_tag_work(tag_id, work_id) VALUES (?, ?)', [tag.id, work.id]);
     }
+  }
+
+  // Fix a bug caused by DLsite changes
+  if (options.includeNSFW) {
+    await trx('t_work')
+    .where('id', '=', work.id)
+    .update({
+      nsfw: work.nsfw
+    });
+  }
+
+  if (options.refreshAll) {
+    await trx('t_work')
+    .where('id', '=', work.id)
+    .update({
+      nsfw: work.nsfw,
+      title: work.title,
+      release: work.release,
+    });
   }
 });
 
@@ -264,7 +257,7 @@ const getWorksBy = ({id, field, username = ''} = {}) => {
     .select(['t_review.work_id', 't_review.rating'])
     .join('t_work', 't_work.id', 't_review.work_id')
     .where('t_review.user_name', username).as('userrate')
-  
+
   switch (field) {
     case 'circle':
       return knex('staticMetadata').select(['staticMetadata.*', 'userrate.rating AS userRating'])
@@ -291,7 +284,7 @@ const getWorksBy = ({id, field, username = ''} = {}) => {
 
 /**
  * 根据关键字查询音声
- * @param {String} keyword 
+ * @param {String} keyword
  */
 const getWorksByKeyWord = ({keyword, username = 'admin'} = {}) => {
   const ratingSubQuery = knex('t_review')
@@ -340,7 +333,7 @@ const getLabels = (field) => {
       .select('id', 'name')
       .groupBy(`${field}_id`)
       .count(`${field}_id as count`);
-  } 
+  }
 };
 
 /**
@@ -409,13 +402,13 @@ const updateUserReview = async (username, workid, rating, review_text = '', prog
     //UPSERT
     if (starOnly) {
       await trx.raw('UPDATE t_review SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE user_name = ? AND work_id = ?;', [rating, username, workid]);
-      await trx.raw('INSERT OR IGNORE INTO t_review (user_name, work_id, rating) VALUES (?, ?, ?);', [username, workid, rating]); 
+      await trx.raw('INSERT OR IGNORE INTO t_review (user_name, work_id, rating) VALUES (?, ?, ?);', [username, workid, rating]);
     } else if (progressOnly) {
       await trx.raw('UPDATE t_review SET progress = ?, updated_at = CURRENT_TIMESTAMP WHERE user_name = ? AND work_id = ?;', [progress, username, workid]);
-      await trx.raw('INSERT OR IGNORE INTO t_review (user_name, work_id, progress) VALUES (?, ?, ?);', [username, workid, progress]); 
+      await trx.raw('INSERT OR IGNORE INTO t_review (user_name, work_id, progress) VALUES (?, ?, ?);', [username, workid, progress]);
     } else {
       await trx.raw('UPDATE t_review SET rating = ?, review_text = ?, progress = ?, updated_at = CURRENT_TIMESTAMP WHERE user_name = ? AND work_id = ?;', [rating, review_text, progress, username, workid]);
-      await trx.raw('INSERT OR IGNORE INTO t_review (user_name, work_id, rating, review_text, progress) VALUES (?, ?, ?, ?, ?);', [username, workid, rating, review_text, progress]); 
+      await trx.raw('INSERT OR IGNORE INTO t_review (user_name, work_id, rating, review_text, progress) VALUES (?, ?, ?, ?, ?);', [username, workid, rating, review_text, progress]);
     }
 });
 

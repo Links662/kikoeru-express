@@ -1,5 +1,7 @@
 const { knex } = require('./db');
 
+const dbVersion = '20210502081522';
+
 // 数据库结构
 const createSchema = () => knex.schema
   .createTable('t_circle', (table) => {
@@ -61,7 +63,7 @@ const createSchema = () => knex.schema
     table.integer('rating'); // 用户评分1-5
     table.string('review_text'); // 用户评价文字
     table.timestamps(true, true); // 时间戳created_at, updated_at
-    table.string('progress'); // ['marked', 'listening', 'listened', 'postponed', null]
+    table.string('progress'); // ['marked', 'listening', 'listened', 'replay'，'postponed', null]
     table.foreign('user_name').references('name').inTable('t_user').onDelete('CASCADE'); // FOREIGN KEY 
     table.foreign('work_id').references('id').inTable('t_work').onDelete('CASCADE'); // FOREIGN KEY 
     table.primary(['user_name', 'work_id']); // PRIMARY KEY
@@ -110,4 +112,4 @@ const createSchema = () => knex.schema
     }
   });
 
-module.exports = { createSchema };
+module.exports = { createSchema, dbVersion };

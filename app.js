@@ -3,7 +3,7 @@
 require('dotenv').config()
 const path = require('path');
 const express = require('express');
-const initSocket = require('./socket');
+
 const compression = require('compression');
 const bodyParser = require('body-parser'); // 获取 req.body
 const history = require('connect-history-api-fallback');
@@ -11,7 +11,17 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 
+// Crash the process on "unhandled promise rejection" when NODE_ENV=test or CRASH_ON_UNHANDLED exists
+if (process.env.NODE_ENV === 'test' || process.env.CRASH_ON_UNHANDLED) {
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error(new Date().toJSON(), 'Kikoeru log: Unhandled rejection at ', promise, `reason: ${reason}`);
+    console.error('Crashing the process because of NODE_ENV or CRASH_ON_UNHANDLED settings');
+    process.exit(1)
+  })
+}
+
 const { initApp }= require('./database/init');
+const initSocket = require('./socket');
 const { config } = require('./config');
 const api = require('./api');
 const app = express();
