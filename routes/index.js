@@ -18,6 +18,7 @@ router.use('/version', require('./version'));
 router.use('/config', require('./config'));
 router.use('/media', require('./media'));
 router.use('/review', require('./review'));
+router.use('/history', require('./history'));
 // Other routes
 router.use('/', require('./metadata'));
 

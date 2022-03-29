@@ -89,7 +89,8 @@ const createSchema = () => knex.schema
           t_work.rate_count,
           t_work.rate_average_2dp,
           t_work.rate_count_detail,
-          t_work.rank
+          t_work.rank,
+          t_work.insert_time
         FROM t_work
         JOIN t_circle ON t_circle.id = t_work.circle_id
       ) AS baseQuery
@@ -112,4 +113,85 @@ const createSchema = () => knex.schema
     }
   });
 
-module.exports = { createSchema, dbVersion };
+const createTableHistory = () => knex.schema
+.createTable('t_history', (table) => {
+  table.integer('id').primary();         
+  table.string('user_name').notNullable();  // 用户名
+  table.string('work_id').notNullable();    // 作品id
+  table.string('file_index').notNullable(); // 音频index
+  table.string('file_name');                // 播放音频文件名
+  table.integer('play_time');               // 播放进度(s)
+  table.integer('total_time');              // 总时间(s)
+  table.timestamps(true, true);             // 时间戳created_at, updated_at
+  table.foreign('user_name').references('name').inTable('t_user').onDelete('CASCADE'); // FOREIGN KEY 
+  table.foreign('work_id').references('id').inTable('t_work').onDelete('CASCADE'); // FOREIGN KEY 
+  table.unique(['user_name', 'work_id', 'file_index']);  // PRIMARY KEY
+})
+.then(() => {
+  console.log(' * 成功构建数据库结构.');
+})
+.catch((err) => {
+  if (err.toString().indexOf('table `t_circle` already exists') !== -1) {
+    console.log(' * 数据库结构已经存在.');
+  } else {
+    console.log(err);
+  }
+});
+
+const createTableHistoryIfNotExists = () => knex.schema.hasTable('t_history').then(function(exists) {
+  if (!exists) {
+    createTableHistory();
+  }
+});
+
+const addInsertTimeToTableWork =  () => knex.schema
+.raw("ALTER TABLE t_work ADD COLUMN insert_time timestamp DEFAULT null")
+.raw("DROP VIEW staticMetadata")
+.raw(`
+      CREATE VIEW IF NOT EXISTS staticMetadata AS
+      SELECT baseQueryWithVA.*,
+        json_object('tags', json_group_array(json_object('id', t_tag.id, 'name', t_tag.name))) AS tagObj
+      FROM (
+        SELECT baseQuery.*,
+          json_object('vas', json_group_array(json_object('id', t_va.id, 'name', t_va.name))) AS vaObj
+        FROM (
+          SELECT t_work.id, 
+            t_work.title,
+            t_work.circle_id,
+            t_circle.name,
+            json_object('id', t_work.circle_id, 'name', t_circle.name) AS circleObj,
+            t_work.nsfw,
+            t_work.release,
+            t_work.dl_count,
+            t_work.price,
+            t_work.review_count,
+            t_work.rate_count,
+            t_work.rate_average_2dp,
+            t_work.rate_count_detail,
+            t_work.rank,
+            t_work.insert_time
+          FROM t_work
+          JOIN t_circle ON t_circle.id = t_work.circle_id
+        ) AS baseQuery
+        JOIN r_va_work ON r_va_work.work_id = baseQuery.id
+        JOIN t_va ON t_va.id = r_va_work.va_id
+        GROUP BY baseQuery.id
+      ) AS baseQueryWithVA
+      LEFT JOIN r_tag_work ON r_tag_work.work_id = baseQueryWithVA.id
+      LEFT JOIN t_tag ON t_tag.id = r_tag_work.tag_id
+      GROUP BY baseQueryWithVA.id;
+`)
+.then(() => {
+  console.log(' * 成功修改数据库schema.');
+})
+.catch((err) => {
+    console.log(err);
+});
+
+const addInsertTimeToTableWorkIfNotExists = () => knex.schema.hasColumn("t_work", "insert_time").then(function(exists) {
+  if (!exists) {
+    addInsertTimeToTableWork();
+  }
+})
+
+module.exports = { createSchema, createTableHistoryIfNotExists, addInsertTimeToTableWorkIfNotExists, dbVersion };
