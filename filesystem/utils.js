@@ -164,9 +164,9 @@ async function* getFolderList(rootFolder, current = '', depth = 0, callback = fu
     try {
     // eslint-disable-next-line no-await-in-loop
       if ((await fs.promises.stat(absolutePath)).isDirectory()) { // 检查是否为文件夹
-          if (folder.match(/RJ\d{6}/)) { // 检查文件夹名称中是否含有RJ号
+          if (folder.match(/RJ\d+/)) { // 检查文件夹名称中是否含有RJ号
             // Found a work folder, don't go any deeper.
-            yield { absolutePath, relativePath, rootFolderName: rootFolder.name, id: parseInt(folder.match(/RJ(\d{6})/)[1]) };
+            yield { absolutePath, relativePath, rootFolderName: rootFolder.name, id: parseInt(folder.match(/RJ(\d+)/)[1]) };
           } else if (depth + 1 < config.scannerMaxRecursionDepth) {
             // 若文件夹名称中不含有RJ号，就进入该文件夹内部
             // Found a folder that's not a work folder, go inside if allowed.
