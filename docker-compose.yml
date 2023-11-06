@@ -1,8 +1,14 @@
 version: '3.8'
 services:
     kikoeru:
+        image: 'links/kikoeru-dev'
+        container_name: kikoeru
+        build:
+          context: /root/kikoeru
+          dockerfile: Dockerfile
         ports:
             - '8888:8888'
+        # network_mode: host
         volumes:
             # Change the next line to your location of storage
             # e.g. /storage/DLsite/xxx:/usr/src/kikoeru/VoiceWork
@@ -11,5 +17,4 @@ services:
             - ./sqlite:/usr/src/kikoeru/sqlite
             - ./covers:/usr/src/kikoeru/covers
             - ./config:/usr/src/kikoeru/config
-        image: 'muveex/kikoeru:v0.6.2'
         restart: always
