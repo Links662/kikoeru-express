@@ -19,7 +19,7 @@ const filterConfig = (_config, option = 'read') => {
 
 // 修改配置文件
 router.put('/admin', (req, res, next) => {
-  if (!config.auth || req.user.name === 'admin') {
+  if (!config.auth || req.user.group === 'administrator') {
     try {
       // Note: setConfig uses Object.assign to merge new configs
       setConfig(filterConfig(req.body.config, 'write'));
@@ -28,20 +28,20 @@ router.put('/admin', (req, res, next) => {
       next(err);
     }
   } else {
-    res.status(403).send({ error: '只有 admin 账号能修改配置文件.' });
+    res.status(403).send({ error: '只有 administrator 账号能修改配置文件.' });
   }
 });
 
 // 获取配置文件
 router.get('/admin', (req, res, next) => {
-  if (!config.auth || req.user.name === 'admin') {
+  if (!config.auth || req.user.group === 'administrator') {
     try {
       res.send({ config: filterConfig(config, 'read') });
     } catch(err) {
       next(err);
     }
   } else {
-    res.status(403).send({ error: '只有 admin 账号能读取管理配置文件.' });
+    res.status(403).send({ error: '只有 administrator 账号能读取管理配置文件.' });
   }
 });
 

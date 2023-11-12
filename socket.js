@@ -15,10 +15,10 @@ const initSocket = (server) => {
         group: payload.group
       };
 
-      if (user.name === 'admin') {
+      if (user.group === 'administrator') {
         done(null, user);
       } else {
-        done(null, false, '只有 admin 账号能登录管理后台.');
+        done(null, false, '只有 administrator 账号能登录管理后台.');
       }
     }));
   }
