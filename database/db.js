@@ -489,11 +489,17 @@ const getHistoryGroupByWorkId = async (username) => knex.transaction(async(trx) 
   return history
 })
 
+// 删除一个用户所有历史记录
+const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) => {
+  await trx.raw(`DELETE FROM t_history WHERE user_name = ?`, [username])
+  return
+})
+
 module.exports = {
   knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksByKeyWord, updateWorkMetadata,
   getLabels, getMetadata,
   createUser, updateUserPassword, resetUserPassword, deleteUser,
   getWorksWithReviews, updateUserReview, deleteUserReview,
-  insertHistory, getHistoryByUsername, getHistoryByWorkIdIndex, getHistoryGroupByWorkId,
+  insertHistory, getHistoryByUsername, getHistoryByWorkIdIndex, getHistoryGroupByWorkId,deleteHistoryByUserName,
   databaseExist
 };

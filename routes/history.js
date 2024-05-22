@@ -113,6 +113,19 @@ router.get('/recent',
       console.log(err)
       res.status(500).send({ error: '服务器错误' });
     }
+  },
+)
+  router.get('/deleteRecent',
+  async (req, res) => {
+    if(!isValidRequest(req, res)) return;
+    const username = config.auth ? req.user.name : 'admin';
+
+    try {
+      await db.deleteHistoryByUserName(username)
+    } catch(err) {
+      console.log(err)
+      res.status(500).send({ error: '服务器错误' });
+    }
   }
 )
 
