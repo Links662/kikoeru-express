@@ -433,14 +433,19 @@ const getWorksWithReviews = async ({username = '', limit = 1000, offset = 0, ord
   let query = () => knex('staticMetadata')
     .select(['staticMetadata.*', 'userrate.userRating', 'userrate.review_text', 'userrate.progress', 'userrate.updated_at', 'userrate.user_name'])
     .join(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id')
-    .orderBy(orderBy, sortOption).orderBy([{ column: 'release', order: 'desc'}, { column: 'id', order: 'desc' }]);
+
 
   if (filter) {
-    totalCount = await query().where('progress', '=', filter).count('id as count');
-    works = await query().where('progress', '=', filter).limit(limit).offset(offset);
+    if(orderBy==='betterRandom'){
+      totalCount = await query().where('progress', '=', filter).count('id as count');
+      works = await query().where('progress', '=', filter).limit(1).orderBy(knex.raw('random()'));
+    } else {
+      totalCount = await query().where('progress', '=', filter).count('id as count');
+      works = await query().where('progress', '=', filter).limit(limit).offset(offset).orderBy(orderBy, sortOption);
+    }
   } else {
     totalCount = await query().count('id as count');
-    works = await query().limit(limit).offset(offset);
+    works = await query().limit(limit).offset(offset).orderBy(orderBy, sortOption);
   }
 
   return {works, totalCount};
