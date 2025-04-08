@@ -17,13 +17,13 @@ COPY package*.json ./
 RUN npm ci --only=production
 
 # Build SPA and PWA
-FROM node:14 as build-frontend
+FROM node:14-alpine as build-frontend
 WORKDIR /frontend
 # @quasar/app v1 requires node-ass, which takes 30 minutes to compile libsass in CI for arm64 and armv7
 # So I prebuilt the binaries for arm64 and armv7
 # @quasar/app v2 no longer uses this deprecated package, so this line will be removed in the future
 ENV SASS_BINARY_SITE="https://github.com/umonaca/node-sass/releases/download"
-RUN npm install -g @quasar/cli
+RUN npm install -g @quasar/cli@1.2.0
 ARG FRONTEND_VERSION="history-release"
 # Workaround docker cache
 # https://stackoverflow.com/questions/36996046/how-to-prevent-dockerfile-caching-git-clone
@@ -45,9 +45,11 @@ COPY --from=build-frontend /frontend/dist/${FRONTEND_TYPE} /usr/src/kikoeru/dist
 
 # Bundle app source
 COPY . .
-
+RUN apk add --no-cache tzdata && \
+cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+echo "Asia/Shanghai" > /etc/timezone
 # Tini
-RUN apk add --no-cache tini
+RUN apk add --no-cache tini 
 ENTRYPOINT ["/sbin/tini", "--"]
 
 # 持久化
