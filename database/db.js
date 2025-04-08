@@ -146,7 +146,7 @@ const getWorkMetadata = async (id, username) => {
   // I think we are done.
 
     const ratingSubQuery = knex('t_review')
-    .select(['t_review.work_id', 't_review.rating AS userRating', 't_review.review_text', 't_review.progress', knex.raw('strftime(\'%Y-%m-%d %H-%M-%S\', t_review.updated_at, \'localtime\') AS updated_at'), 't_review.user_name'])
+    .select(['t_review.work_id', 't_review.rating AS userRating', 't_review.review_text', 't_review.progress', knex.raw('strftime(\'%Y-%m-%d %H:%M:%S\', t_review.updated_at, \'localtime\') AS updated_at'), 't_review.user_name'])
     .join('t_work', 't_work.id', 't_review.work_id')
     .where('t_review.user_name', username).as('userrate');
 
@@ -426,7 +426,7 @@ const getWorksWithReviews = async ({username = '', limit = 1000, offset = 0, ord
   let totalCount = 0;
 
   const ratingSubQuery = knex('t_review')
-  .select(['t_review.work_id', 't_review.rating AS userRating', 't_review.review_text', 't_review.progress', knex.raw('strftime(\'%Y-%m-%d %H-%M-%S\', t_review.updated_at, \'localtime\') AS updated_at'), 't_review.user_name'])
+  .select(['t_review.work_id', 't_review.rating AS userRating', 't_review.review_text', 't_review.progress', knex.raw('strftime(\'%Y-%m-%d %H:%M:%S\', t_review.updated_at, \'localtime\') AS updated_at'), 't_review.user_name'])
   .join('t_work', 't_work.id', 't_review.work_id')
   .where('t_review.user_name', username).as('userrate');
 

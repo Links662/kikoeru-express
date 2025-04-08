@@ -30,7 +30,7 @@ router.get('/',
     try {
       const {works, totalCount} = await db.getWorksWithReviews({username: username, limit: PAGE_SIZE, offset: offset, orderBy: order, sortOption: sort, filter});
 
-      normalize(works, {dateOnly: true});
+      normalize(works);
 
       res.send({
         works,
