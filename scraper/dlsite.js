@@ -10,7 +10,6 @@ const scrapeWorkMetadataFromHVDB = require('./hvdb');
  * @param {String} language 标签语言，'ja-jp', 'zh-tw' or 'zh-cn'，默认'zh-cn'
  */
 const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolve, reject) => {
-  //const rjcode = (`000000${id}`).slice(-6);
   let rjcode ;
   if (id>=1000000) {
     rjcode = (`00000000${id}`).slice(-8);

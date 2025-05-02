@@ -24,11 +24,7 @@ WORKDIR /frontend
 # @quasar/app v2 no longer uses this deprecated package, so this line will be removed in the future
 ENV SASS_BINARY_SITE="https://github.com/umonaca/node-sass/releases/download"
 RUN npm install -g @quasar/cli@1.2.0
-ARG FRONTEND_VERSION="history-release"
-# Workaround docker cache
-# https://stackoverflow.com/questions/36996046/how-to-prevent-dockerfile-caching-git-clone
-# ADD https://api.github.com/repos/azuse/kikoeru-quasar/git/refs/heads/history-release /tmp/version.json
-# RUN git clone -b ${FRONTEND_VERSION} https://github.com/azuse/kikoeru-quasar.git .
+
 COPY ./quasar .
 RUN npm ci
 RUN quasar build && quasar build -m pwa
