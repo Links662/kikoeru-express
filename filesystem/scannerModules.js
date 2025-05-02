@@ -658,11 +658,7 @@ const performScan = () => {
  * @param {options = {}} options includeVA, includeTags
  */
 const updateMetadata = (id, options = {}) => {
-  let scrapeProcessor = () => scrapeDynamicWorkMetadataFromDLsite(id);
-  if (options.includeVA || options.includeTags || options.includeNSFW || options.refreshAll) {
-    // static + dynamic
-    scrapeProcessor = () => scrapeWorkMetadataFromDLsite(id, config.tagLanguage);
-  }
+  let scrapeProcessor = () => scrapeWorkMetadataFromDLsite(id, config.tagLanguage);
 
   //const rjcode = (`000000${id}`).slice(-6); // zero-pad to 6 digits
   let rjcode ;

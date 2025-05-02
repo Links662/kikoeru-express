@@ -53,10 +53,17 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
                 //id: hashNameIntoInt(attrs.href), // TODO: RESHNIX!!!
               });
               writeTo = 'va.name';
+              currentVaName = ''; // 重置临时存储
             }
           }
         },
-        onclosetag: () => { writeTo = null; },
+        onclosetag: (name) => {
+          if (name === 'a' && writeTo === 'va.name') {
+            work.vas[work.vas.length - 1].name = currentVaName.trim(); // 存入完整名字
+            work.vas[work.vas.length - 1].id = nameToUUID(currentVaName.trim());
+            writeTo = null;
+          }
+        },
         ontext: (text) => {
           switch (writeTo) {
             case 'circle.name':
@@ -66,8 +73,7 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
               work.tags[work.tags.length - 1].name = text;
               break;
             case 'va.name':
-              work.vas[work.vas.length - 1].name = text;
-              work.vas[work.vas.length - 1].id = nameToUUID(text);
+              currentVaName += text; // 累积文本
               break;
             default:
           }
