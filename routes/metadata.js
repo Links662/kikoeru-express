@@ -79,55 +79,66 @@ router.get('/tracks/:id',
 
 // GET list of work ids
 router.get('/works',
-  query('page').optional({nullable: true}).isInt(),
-  query('sort').optional({nullable: true}).isIn(['desc', 'asc']),
-  query('seed').optional({nullable: true}).isInt(),
-  // eslint-disable-next-line no-unused-vars
-  async (req, res, next) => {
-    if(!isValidRequest(req, res)) return;
+  query('page').optional({ nullable: true }).isInt(),
+  query('sort').optional({ nullable: true }).isIn(['desc', 'asc']),
+  query('seed').optional({ nullable: true }).isInt(),
+  async (req, res) => {
+    if (!isValidRequest(req, res)) return;
 
     const currentPage = parseInt(req.query.page) || 1;
-    // 通过 "音声id, 贩卖日, 评价, 用户评价, 售出数, 评论数量, 价格, 平均评价, 全年龄新作， 评价" 排序
-    // ['id', 'release', 'rating', 'dl_count', 'review_count', 'price', 'rate_average_2dp, nsfw']
     const order = req.query.order || 'release';
     const sort = req.query.sort || 'desc';
     const offset = (currentPage - 1) * PAGE_SIZE;
     const username = config.auth ? req.user.name : 'admin';
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
-    
-    try {
-      const query = () => db.getWorksBy({username: username});
-      const totalCount = await query().count('id as count');
 
-      let works = null;
+    try {
+      // 构建基础查询
+      const baseQuery = () => db.getWorksBy({});
+
+      // 总数统计
+      const totalCountResult = await baseQuery().clone().count('id as count');
+      const totalCount = totalCountResult[0].count;
+
+      let works;
 
       if (order === 'random') {
-        // 随机排序+分页 hack
-        works = await query().offset(offset).limit(PAGE_SIZE).orderBy(db.knex.raw('id % ?', shuffleSeed));
+        // 随机排序 + 分页 hack（用 modulo 避免全表扫描）
+        works = await baseQuery()
+          .offset(offset)
+          .limit(PAGE_SIZE)
+          .orderBy(db.knex.raw('id % ?', shuffleSeed));
       } else if (order === 'betterRandom') {
         // 随心听专用，不支持分页
-        works = await query().limit(1).orderBy(db.knex.raw('random()'));
+        works = await baseQuery()
+          .limit(1)
+          .orderBy(db.knex.raw('random()'));
       } else {
-        works = await query().offset(offset).limit(PAGE_SIZE).orderBy(order, sort)
-        .orderBy([{ column: 'release', order: 'desc'}, { column: 'id', order: 'desc' }])
+        // 普通排序，带索引
+        works = await baseQuery()
+          .offset(offset)
+          .limit(PAGE_SIZE)
+          .orderBy(order, sort)
+          .orderBy([{ column: 'release', order: 'desc' }, { column: 'id', order: 'desc' }]);
       }
 
       works = normalize(works);
-    
+
       res.send({
         works,
         pagination: {
           currentPage,
           pageSize: PAGE_SIZE,
-          totalCount: totalCount[0]['count']
+          totalCount
         }
       });
-    } catch(err) {
-      res.status(500).send({error: '服务器错误'});
-      console.error(err)
-      // next(err);
+
+    } catch (err) {
+      console.error(err);
+      res.status(500).send({ error: '服务器错误' });
     }
-});
+  });
+
 
 // GET name of a circle/tag/VA
 router.get('/:field(circle|tag|va)s/:id',
@@ -212,7 +223,7 @@ router.get('/:field(circle|tag|va)s/:id/works',
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
 
     try {
-      const query = () => db.getWorksBy({id: req.params.id, field: req.params.field, username: username});
+      const query = () => db.getWorksBy({id: req.params.id, field: req.params.field});
       const totalCount = await query().count('id as count');
 
       let works = null;
