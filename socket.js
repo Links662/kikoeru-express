@@ -3,6 +3,7 @@ const socket = require('socket.io');
 const jwtAuth = require('socketio-jwt-auth'); // 用于 JWT 验证的 socket.io 中间件
 const child_process = require('child_process'); // 子进程
 const { config } = require('./config');
+const {getWorksCount} = require('./database/db');
 
 const initSocket = (server) => {
   const io = socket(server);
@@ -92,6 +93,10 @@ const initSocket = (server) => {
     // 发生错误时触发
     socket.on('error', (err) => {
       console.error(err);
+    });
+
+    socket.on('COUNT_UPDATE', () => {
+      getWorksCount(0)
     });
   });
 }

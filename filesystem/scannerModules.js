@@ -11,7 +11,6 @@ const { md5 } = require('../auth/utils');
 const { nameToUUID } = require('../scraper/utils');
 
 const { config } = require('../config');
-const { updateLock } = require('../upgrade');
 
 // 只有在子进程中 process 对象才有 send() 方法
 process.send = process.send || function () {};
@@ -465,24 +464,6 @@ const performScan = () => {
         updated: 0
       };
 
-
-      // Fix hash collision bug in t_va
-      // Scan to repopulate the Voice Actor data for those problematic works
-      // かの仔 and こっこ
-      let fixVAFailed = false;
-      if (updateLock.isLockFilePresent && updateLock.lockFileConfig.fixVA) {
-        emitMainLog(' * 开始进行声优元数据修复，需要联网');
-        try {
-          const updateResult = await fixVoiceActorBug();
-          counts.updated += updateResult;
-          updateLock.removeLockFile();
-          emitMainLog(' * 完成元数据修复');
-        } catch (err) {
-          emitMainLog(err.toString(), 'error');
-          fixVAFailed = true;
-        }
-      }
-
       if (config.skipCleanup) {
         console.log(' * 根据设置跳过清理.');
       } else {
@@ -626,9 +607,6 @@ const performScan = () => {
           });
           
           db.knex.destroy();
-          if (fixVAFailed) {
-            process.exit(1);
-          }
           process.exit(0);
         });
       } catch (err) {

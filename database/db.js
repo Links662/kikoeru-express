@@ -9,6 +9,8 @@ const connEnv = process.env.KNEX_ENV || process.env.NODE_ENV || 'development';
 const conn = require('./knexfile')[connEnv]
 const knex = require('knex')(conn);
 
+let cachedTotalCount = null;
+
 /**
  * Takes a work metadata object and inserts it into the database.
  * @param {Object} work Work object.
@@ -253,34 +255,36 @@ const removeWork = async (id, trxProvider) => {
  * @param {Number} id Which id to filter by.
  * @param {String} field Which field to filter by.
  */
-const getWorksBy = ({id, field, username = ''} = {}) => {
-  let workIdQuery;
-  const ratingSubQuery = knex('t_review')
-    .select(['t_review.work_id', 't_review.rating'])
-    .join('t_work', 't_work.id', 't_review.work_id')
-    .where('t_review.user_name', username).as('userrate')
+const getWorksBy = ({ id, field } = {}) => {
+  let baseQuery = knex('staticMetadata').select('staticMetadata.*');
 
   switch (field) {
     case 'circle':
-      return knex('staticMetadata').select(['staticMetadata.*', 'userrate.rating AS userRating'])
-        .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id')
-        .where('circle_id', '=', id);
+      return baseQuery.where('circle_id', id);
 
     case 'tag':
-      workIdQuery = knex('r_tag_work').select('work_id').where('tag_id', '=', id);
-      return knex('staticMetadata').select(['staticMetadata.*', 'userrate.rating AS userRating'])
-        .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id')
-        .where('id', 'in', workIdQuery);
+      return baseQuery
+        .join('r_tag_work', 'r_tag_work.work_id', 'staticMetadata.id')
+        .where('r_tag_work.tag_id', id);
 
     case 'va':
-      workIdQuery = knex('r_va_work').select('work_id').where('va_id', '=', id);
-      return knex('staticMetadata').select(['staticMetadata.*', 'userrate.rating AS userRating'])
-        .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id')
-        .where('id', 'in', workIdQuery);
+      return baseQuery
+        .join('r_va_work', 'r_va_work.work_id', 'staticMetadata.id')
+        .where('r_va_work.va_id', id);
 
     default:
-      return knex('staticMetadata').select(['staticMetadata.*', 'userrate.rating AS userRating'])
-        .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id');
+      return baseQuery;
+  }
+};
+
+const getWorksCount = async (cacheflag = 0) => {
+  if (cacheflag == 1 && cachedTotalCount != null) {
+    return cachedTotalCount;
+  } else {
+    const baseQuery = () => getWorksBy({});
+    const totalCountResult = await baseQuery().count('id as count');
+    cachedTotalCount = totalCountResult[0].count;
+    return cachedTotalCount;
   }
 };
 
@@ -501,7 +505,7 @@ const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) 
 })
 
 module.exports = {
-  knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksByKeyWord, updateWorkMetadata,
+  knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksCount, getWorksByKeyWord, updateWorkMetadata,
   getLabels, getMetadata,
   createUser, updateUserPassword, resetUserPassword, deleteUser,
   getWorksWithReviews, updateUserReview, deleteUserReview,
