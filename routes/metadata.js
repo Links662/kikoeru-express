@@ -95,11 +95,7 @@ router.get('/works',
     try {
       // 构建基础查询
       const baseQuery = () => db.getWorksBy({});
-
-      // 总数统计
-      const totalCountResult = await baseQuery().clone().count('id as count');
-      const totalCount = totalCountResult[0].count;
-
+      const totalCount = await db.getWorksCount(1)
       let works;
 
       if (order === 'random') {

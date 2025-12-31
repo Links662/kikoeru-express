@@ -9,6 +9,8 @@ const connEnv = process.env.KNEX_ENV || process.env.NODE_ENV || 'development';
 const conn = require('./knexfile')[connEnv]
 const knex = require('knex')(conn);
 
+let cachedTotalCount = null;
+
 /**
  * Takes a work metadata object and inserts it into the database.
  * @param {Object} work Work object.
@@ -275,6 +277,16 @@ const getWorksBy = ({ id, field } = {}) => {
   }
 };
 
+const getWorksCount = async (cacheflag = 0) => {
+  if (cacheflag == 1 && cachedTotalCount != null) {
+    return cachedTotalCount;
+  } else {
+    const baseQuery = () => getWorksBy({});
+    const totalCountResult = await baseQuery().count('id as count');
+    cachedTotalCount = totalCountResult[0].count;
+    return cachedTotalCount;
+  }
+};
 
 /**
  * 根据关键字查询音声
@@ -493,7 +505,7 @@ const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) 
 })
 
 module.exports = {
-  knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksByKeyWord, updateWorkMetadata,
+  knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksCount, getWorksByKeyWord, updateWorkMetadata,
   getLabels, getMetadata,
   createUser, updateUserPassword, resetUserPassword, deleteUser,
   getWorksWithReviews, updateUserReview, deleteUserReview,
