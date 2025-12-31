@@ -22,10 +22,9 @@ WORKDIR /frontend
 # @quasar/app v1 requires node-ass, which takes 30 minutes to compile libsass in CI for arm64 and armv7
 # So I prebuilt the binaries for arm64 and armv7
 # @quasar/app v2 no longer uses this deprecated package, so this line will be removed in the future
-ENV SASS_BINARY_SITE="https://github.com/umonaca/node-sass/releases/download"
 RUN npm install -g @quasar/cli@1.2.0
 
-COPY ./quasar .
+COPY ./kikoeru-quasar .
 RUN npm ci
 RUN quasar build && quasar build -m pwa
 
