@@ -479,34 +479,45 @@ const insertHistory = (username, work_id, file_index, file_name, play_time, tota
     await trx.raw('INSERT OR REPLACE INTO t_history (user_name, work_id, file_index, file_name, play_time, total_time) VALUES (?, ?, ?, ?, ?, ?);', [username, work_id, file_index, file_name, play_time, total_time]);
 });
 
-// 读取某用户的历史数据
-const getHistoryByUsername = async (username, limit = 1000, offset = 0,) => knex.transaction(async(trx) => {
-  let history = await trx.raw('SELECT user_name, work_id, file_index, file_name, play_time, total_time, updated_at FROM t_history WHERE user_name = ? LIMIT ? OFFSET ?;', [username, limit, offset])
-  
-  return history
-})
-
 // 读取某用户 work id, file index的历史数据
-const getHistoryByWorkIdIndex = async (username, work_id, file_index) => knex.transaction(async(trx) => {
-  let history = await trx.raw('SELECT user_name, work_id, file_index, file_name, play_time, total_time, updated_at FROM t_history WHERE user_name = ? AND work_id = ? AND file_index = ?;', [username, work_id, file_index]);
-  
-  return history
-})
+const getHistoryByWorkIdIndex = async (username, work_id, file_index) => {
+  return knex('t_history')
+    .select([
+      'user_name',
+      'work_id',
+      'file_index',
+      'file_name',
+      'play_time',
+      'total_time',
+      'updated_at'
+    ])
+    .where({
+      user_name: username,
+      work_id,
+      file_index
+    })
+    .first()
+}
 
 // GROUP BY workid 读取work id最后一条历史记录
-const getHistoryGroupByWorkId = async (username) => knex.transaction(async(trx) => {
-  let history = await trx.raw(`
-  WITH tmp_table AS (
-    SELECT * FROM t_history WHERE user_name = ?
-  )
-  SELECT a.*
-  FROM tmp_table a                   
-  LEFT JOIN tmp_table b             
-  ON a.work_id = b.work_id AND a.updated_at < b.updated_at
-  WHERE b.updated_at is NULL GROUP BY a.work_id ORDER BY a.updated_at DESC`, [username])
+const getHistoryGroupByWorkId = async (username, limit = 100) => {
+  const tmp = knex('t_history')
+    .select('*')
+    .where('user_name', username)
+    .as('tmp')
 
-  return history
-})
+  return knex
+    .select('a.*')
+    .from({ a: tmp })
+    .leftJoin({ b: tmp }, function () {
+      this.on('a.work_id', '=', 'b.work_id')
+        .andOn('a.updated_at', '<', 'b.updated_at')
+    })
+    .whereNull('b.updated_at')
+    .groupBy('a.work_id')
+    .orderBy('a.updated_at', 'desc')
+    .limit(limit)
+}
 
 // 删除一个用户所有历史记录
 const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) => {
@@ -519,6 +530,6 @@ module.exports = {
   getLabels, getMetadata,
   createUser, updateUserPassword, resetUserPassword, deleteUser,
   getWorksWithReviews, updateUserReview, deleteUserReview,
-  insertHistory, getHistoryByUsername, getHistoryByWorkIdIndex, getHistoryGroupByWorkId,deleteHistoryByUserName,
+  insertHistory, getHistoryByWorkIdIndex, getHistoryGroupByWorkId,deleteHistoryByUserName,
   databaseExist
 };

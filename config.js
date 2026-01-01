@@ -64,6 +64,7 @@ const defaultConfig = {
   rewindSeekTime: 5,
   forwardSeekTime: 30,
   offloadMedia: false,
+  recentCount: 20,
   offloadStreamPath: '/media/stream/',          // /media/stream/RJ123456/subdirs/track.mp3
   offloadDownloadPath: '/media/download/'      // /media/download/RJ123456/subdirs/track.mp3
 };

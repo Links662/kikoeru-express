@@ -30,36 +30,6 @@ router.put('/',
   }  
 )
 
-
-// 读取历史记录
-// 同一个 id 最后一次的数据即可
-router.get('/', 
-  async (req, res) => {
-    if(!isValidRequest(req, res)) return;
-
-    const username = config.auth ? req.user.name : 'admin';
-
-    try {
-      let history = await db.getHistoryByUsername(username)
-
-      history.map(record => {
-        record.work_id = parseInt(record.work_id);
-        record.file_index = parseInt(record.file_index);
-        // record.file_name = record.file_name;
-        // record.play_time = record.play_time;
-        // record.total_time = record.total_time;
-        // record.updated_at = record.updated_at;
-        // record.user_name = record.username;
-      })
-
-      res.send(history)
-    } catch(err) {
-      console.log(err)
-      res.status(500).send({ error: '服务器错误' });
-    }
-  }
-)
-
 router.get('/getByWorkIdIndex', 
   query('work_id'),
   query('file_index'),
@@ -74,11 +44,6 @@ router.get('/getByWorkIdIndex',
       history.map(record => {
         record.work_id = parseInt(record.work_id);
         record.file_index = parseInt(record.file_index);
-        // record.file_name = record.file_name;
-        // record.play_time = record.play_time;
-        // record.total_time = record.total_time;
-        // record.updated_at = record.updated_at;
-        // record.user_name = record.username;
       })
 
       res.send(history)
@@ -96,16 +61,11 @@ router.get('/recent',
     const username = config.auth ? req.user.name : 'admin';
 
     try {
-      let history = await db.getHistoryGroupByWorkId(username)
+      let history = await db.getHistoryGroupByWorkId(username,config.recentCount)
 
       history.map(record => {
         record.work_id = parseInt(record.work_id);
         record.file_index = parseInt(record.file_index);
-        // record.file_name = record.file_name;
-        // record.play_time = record.play_time;
-        // record.total_time = record.total_time;
-        // record.updated_at = record.updated_at;
-        // record.user_name = record.username;
       })
 
       res.send(history)
