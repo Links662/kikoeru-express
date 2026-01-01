@@ -28,7 +28,7 @@ router.get('/',
     const filter = req.query.filter;
     
     try {
-      const {works, totalCount} = await db.getWorksWithReviews({username: username, limit: PAGE_SIZE, offset: offset, orderBy: order, sortOption: sort, filter});
+      const { works, hasMore } = await db.getWorksWithReviews({ username: username, limit: PAGE_SIZE, offset: offset, orderBy: order, sortOption: sort, filter });
 
       normalize(works);
 
@@ -37,7 +37,7 @@ router.get('/',
         pagination: {
           currentPage,
           pageSize: PAGE_SIZE,
-          totalCount: totalCount[0]['count']
+          hasMore: hasMore
         }
       });
     } catch(err) {
