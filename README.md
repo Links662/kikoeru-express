@@ -1,18 +1,6 @@
-# Kikoeru 后端优化版
-目前在开发历史记录功能，后续会根据需求考虑开发其他功能
-历史记录TODO:
-* 增加了对新RJ号的支持，感谢南+大佬[**Kirie**](https://south-plus.net/u.php?action-show-uid-832724.html)
-* 现在有Dlsite跳转及右上角显示RJ号不齐全的问题
-* ~~最近播放list CSS优化，减小图片大小，优化track信息显示，鼠标动画效果~~
-* CSS还需要继续优化
-* 回到主页时刷新最近播放列表- (放到activated()里即可)
-* 添加向右滑动按钮 >
-* ~~下一首不续播~~
-* WorkTree现实播放进度
-* Work页面提供续播按钮
-* 制作历史记录Page
-* ~~增加按加入日期排序~~
----
+
+
+
 # Kikoeru
 一个同人音声专用的音乐流媒体服务器，详细的使用说明见[**用户文档**](https://github.com/umonaca/kikoeru-express/wiki/%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E)
 
@@ -89,43 +77,7 @@ PWA的优点：基本页面零延迟，可以像手机APP一样通过浏览器�
 
 
 ### TODO
-- [ ] 修复DLsite网址跳转
-- [ ] 修复右上角显示RJ号不齐全问题
-- [x] 可拖动歌词控件
-- [x] 二级页面返回按钮
-- [x] 手动星标
-- [x] 评价过的作品优先
-- [x] 星标前端 CRUD
-- [x] 星标后端 CRUD
-- [x] 进度标记页面
-- [x] 用户评价
-- [x] 修复面条代码里的placeholders
-- [x] 升级sqlite等
-- [x] 刷新元数据
-- [x] 不清理作品
-- [x] 修复扫描阻塞
-- [ ] 使用ID标识文件夹
-- [x] 整理路由等
-- [ ] 单元测试、CI
-- [ ] Insersection Observer
-- [ ] 可编辑标签
-- [ ] 重新扫描
-- [ ] Dark Mode
-- [ ] 重构WorkCard和WorkDetail
-- [ ] 使用vuex重构收藏
-- [x] 检查启用foreign key是否会出错
-- [ ] 导入导出评价、进度
-- [ ] 重构config和schema，添加多用户支持（目前实际上仍然是单用户架构）
-- [ ] 重构鉴权逻辑, cookie, CSRF, 不向管理员传递md5 salt...
-- [x] Knex error catch
-- [x] 写迁移脚本
-- [x] 重写创建数据库逻辑（与迁移脚本冲突了）
-- [ ] 播放列表功能（目前只有一个）
-- [ ] docker适当的权限与进程监控
-- [ ] 添加计划任务，定期更新音声的动态元数据
-- [ ] 手动添加音声
-- [x] 首次扫描bug
-- [x] 扫描设置
+- [ ] 接口性能优化
 
 ### 感谢
 本项目的大部分后端代码来自于开源项目 [kikoeru](https://github.com/nortonandrews/kikoeru)
