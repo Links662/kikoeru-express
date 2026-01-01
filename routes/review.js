@@ -1,13 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { query, body } = require('express-validator');
-const { config } = require('../config');
+const { config, getPageSize } = require('../config');
 const db = require('../database/db');
 const normalize = require('./utils/normalize');
 const { isValidRequest } = require('./utils/validate');
-
-const PAGE_SIZE = config.pageSize || 12;
-
 
 router.get('/',
   query('page').optional({nullable: true}).isInt(),
@@ -23,12 +20,12 @@ router.get('/',
     // ['id', 'release', 'rating', 'dl_count', 'review_count', 'price', 'rate_average_2dp, nsfw']
     const order = req.query.order || 'release';
     const sort = req.query.sort || 'desc';
-    const offset = (currentPage - 1) * PAGE_SIZE;
+    const offset = (currentPage - 1) * getPageSize();
     const username = config.auth ? req.user.name : 'admin';
     const filter = req.query.filter;
     
     try {
-      const { works, hasMore } = await db.getWorksWithReviews({ username: username, limit: PAGE_SIZE, offset: offset, orderBy: order, sortOption: sort, filter });
+      const { works, hasMore } = await db.getWorksWithReviews({ username: username, limit: getPageSize(), offset: offset, orderBy: order, sortOption: sort, filter });
 
       normalize(works);
 
@@ -36,7 +33,7 @@ router.get('/',
         works,
         pagination: {
           currentPage,
-          pageSize: PAGE_SIZE,
+          pageSize: getPageSize(),
           hasMore: hasMore
         }
       });

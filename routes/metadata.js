@@ -4,11 +4,10 @@ const router = express.Router();
 const { param, query} = require('express-validator');
 const db = require('../database/db');
 const { getTrackList, toTree } = require('../filesystem/utils');
-const { config } = require('../config');
+const { config, getPageSize } = require('../config');
 const normalize = require('./utils/normalize')
 const { isValidRequest } = require('./utils/validate');
 
-const PAGE_SIZE = config.pageSize || 12;
 
 // GET work cover image
 router.get('/cover/:id',
@@ -88,7 +87,7 @@ router.get('/works',
     const currentPage = parseInt(req.query.page) || 1;
     const order = req.query.order || 'release';
     const sort = req.query.sort || 'desc';
-    const offset = (currentPage - 1) * PAGE_SIZE;
+    const offset = (currentPage - 1) * getPageSize();
     const username = config.auth ? req.user.name : 'admin';
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
 
@@ -102,7 +101,7 @@ router.get('/works',
         // 随机排序 + 分页 hack（用 modulo 避免全表扫描）
         works = await baseQuery()
           .offset(offset)
-          .limit(PAGE_SIZE)
+          .limit(getPageSize())
           .orderBy(db.knex.raw('id % ?', shuffleSeed));
       } else if (order === 'betterRandom') {
         // 随心听专用，不支持分页
@@ -113,7 +112,7 @@ router.get('/works',
         // 普通排序，带索引
         works = await baseQuery()
           .offset(offset)
-          .limit(PAGE_SIZE)
+          .limit(getPageSize())
           .orderBy(order, sort)
           .orderBy([{ column: 'release', order: 'desc' }, { column: 'id', order: 'desc' }]);
       }
@@ -124,7 +123,7 @@ router.get('/works',
         works,
         pagination: {
           currentPage,
-          pageSize: PAGE_SIZE,
+          pageSize: getPageSize(),
           totalCount
         }
       });
@@ -167,7 +166,7 @@ router.get('/search/:keyword?', async (req, res, next) => {
   // ['id', 'release', 'rating', 'dl_count', 'review_count', 'price', 'rate_average_2dp', 'nsfw']
   const order = req.query.order || 'release';
   const sort = req.query.sort || 'desc';
-  const offset = (currentPage - 1) * PAGE_SIZE;
+  const offset = (currentPage - 1) * getPageSize();
   const username = config.auth ? req.user.name : 'admin';
   const shuffleSeed = req.query.seed ? req.query.seed : 7;
   
@@ -178,9 +177,9 @@ router.get('/search/:keyword?', async (req, res, next) => {
     let works = null;
 
     if (order === 'random') {
-      works = await query().offset(offset).limit(PAGE_SIZE).orderBy(db.knex.raw('id % ?', shuffleSeed));
+      works = await query().offset(offset).limit(getPageSize()).orderBy(db.knex.raw('id % ?', shuffleSeed));
     } else {
-      works = await query().offset(offset).limit(PAGE_SIZE).orderBy(order, sort)
+      works = await query().offset(offset).limit(getPageSize()).orderBy(order, sort)
         .orderBy([{ column: 'release', order: 'desc'}, { column: 'id', order: 'desc' }])
     }
 
@@ -190,7 +189,7 @@ router.get('/search/:keyword?', async (req, res, next) => {
       works,
       pagination: {
         currentPage,
-        pageSize: PAGE_SIZE,
+        pageSize: getPageSize(),
         totalCount: totalCount[0]['count']
       }
     });
@@ -214,7 +213,7 @@ router.get('/:field(circle|tag|va)s/:id/works',
     // ['id', 'release', 'rating', 'dl_count', 'review_count', 'price', 'rate_average_2dp, 'nsfw']
     const order = req.query.order || 'release';
     const sort = req.query.sort || 'desc'; // ['desc', 'asc]
-    const offset = (currentPage - 1) * PAGE_SIZE;
+    const offset = (currentPage - 1) * getPageSize();
     const username = config.auth ? req.user.name : 'admin';
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
 
@@ -225,9 +224,9 @@ router.get('/:field(circle|tag|va)s/:id/works',
       let works = null;
 
       if (order === 'random') {
-        works = await query().offset(offset).limit(PAGE_SIZE).orderBy(db.knex.raw('id % ?', shuffleSeed));
+        works = await query().offset(offset).limit(getPageSize()).orderBy(db.knex.raw('id % ?', shuffleSeed));
       } else {
-        works = await query().offset(offset).limit(PAGE_SIZE).orderBy(order, sort)
+        works = await query().offset(offset).limit(getPageSize()).orderBy(order, sort)
         .orderBy([{ column: 'release', order: 'desc'}, { column: 'id', order: 'desc' }])
       }
 
@@ -237,7 +236,7 @@ router.get('/:field(circle|tag|va)s/:id/works',
         works,
         pagination: {
           currentPage,
-          pageSize: PAGE_SIZE,
+          pageSize: getPageSize(),
           totalCount: totalCount[0]['count']
         }
       });

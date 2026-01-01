@@ -178,6 +178,10 @@ if (!fs.existsSync(configPath)) {
   readConfig();
 }
 
+function getPageSize() {
+  return config.pageSize || 12;
+}
+
 module.exports = {
-  setConfig, updateConfig, config, sharedConfigHandle, configFolderDir
+  setConfig, updateConfig, config, sharedConfigHandle, configFolderDir, getPageSize
 };

@@ -41,10 +41,10 @@ router.get('/getByWorkIdIndex',
     try {
       let history = await db.getHistoryByWorkIdIndex(username, req.query.work_id, req.query.file_index)
 
-      history.map(record => {
-        record.work_id = parseInt(record.work_id);
-        record.file_index = parseInt(record.file_index);
-      })
+      if (history) {
+        history.work_id = Number(history.work_id)
+        history.file_index = Number(history.file_index)
+      }
 
       res.send(history)
     } catch(err) {
