@@ -1,12 +1,7 @@
-
-
-
 # Kikoeru
-一个同人音声专用的音乐流媒体服务器，详细的使用说明见[**用户文档**](https://github.com/umonaca/kikoeru-express/wiki/%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E)
+一个同人音声专用的音乐流媒体服务器。
 
-[![unstable build status](https://github.com/umonaca/kikoeru-express/actions/workflows/build-artifacts.yml/badge.svg)](https://github.com/umonaca/kikoeru-express/actions)
-
-### 功能介绍
+## 功能介绍
 - 从 DLSite 爬取音声元数据
 - 对音声标记进度、打星、写评语
 - 通过标签或关键字快速检索想要找到的音声
@@ -14,32 +9,48 @@
 - 可以选择通过 JWT 验证用户或关闭用户认证功能
 - 支持在 Web 端修改配置文件和扫描音声库
 - 支持为音声库添加多个根文件夹
+- 支持历史记录功能
 
-### 源码安装部署
-将kikoeru-quasar项目生成的SPA或PWA文件夹全部文件置于`dist`文件夹下，确保`dist/index.html`存在，然后：
+## 安装
+
+### 源码安装
+#### 后端安装
 ```bash
 # 安装依赖
 npm install
-
 # 启动服务器
 npm start
-
 # Express listening on http://[::]:8888
 ```
-关于选择PWA还是SPA：  
-区别仅仅在于有无Service Worker，由于Service Worker只能在本地和HTTPS上运行，因此如果远程以HTTP方式打开，PWA和SPA二者没有任何区别。也就是说，如果Kikoeru的主要用途是在移动设备上局域网播放，并且您没有配置HTTPS证书，那么实际上打开的都是SPA。  
-PWA的优点：基本页面零延迟，可以像手机APP一样通过浏览器“添加到桌面”的方式安装成App。作者自己使用的前端版本。  
-缺点：更新新版本时需要至少多刷新一次。  
 
-本项目还有打包好的 **Windows 系统下可用的 exe 可执行文件**与 **docker 镜像**版本，docker镜像及docker-compose的使用说明详见[**用户文档**](https://github.com/umonaca/kikoeru-express/wiki/%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E)  
-使用docker-compose只需调整`docker-compose.yml`内的挂载位置以符合您的存储路径即可。
+#### 前端启动
+参照kikoeru-quasar文档启动前端。
 
-### 技术栈
+### Docker安装
+将kikoeru-quasar源码文件夹复制到kikoeru-express文件夹内，目录结构如下：
+
+```bash
+kikoeru-express
+├── ...
+├── kikoeru-quasar
+└── ...
+```
+
+手动编译构建镜像
+```bash
+docker build -t links/kikoeru-dev .
+```
+
+调整`docker-compose.yml`内的挂载位置，启动服务
+```bash
+docker compose up -d
+```
+
+## 技术栈
 - axios (网络请求)
 - express (构建后端服务)
 - sqlite3 (文件型数据库)
 - knexjs (操作数据库)
-- knex-migrate (数据库迁移)
 - cheerio (将 html 解析为 jQuery 对象)
 - jsonwebtoken (用户认证)
 - socket.io (用于将扫描音声库的结果实时传给客户端)
@@ -49,7 +60,7 @@ PWA的优点：基本页面零延迟，可以像手机APP一样通过浏览器�
 - pkg (打包为可执行文件)
 
 
-### 项目目录结构
+## 项目目录结构
 ```
 ├── routes/                  # 主要路由
 ├── config/                  # 存放配置文件
@@ -72,12 +83,11 @@ PWA的优点：基本页面零延迟，可以像手机APP一样通过浏览器�
 ├── docker-compose.yml       # 用于使用docker-compose一键构建环境
 ├── package.json             # npm 脚本和依赖项
 ├── eslintrc.json            # ESLint
-├── Changelog.md             # 最近的版本历史
 ```
 
-
+## 其他
 ### TODO
-- [ ] 接口性能优化
+- [x] 接口性能优化，从3s优化到60ms
 
 ### 感谢
 本项目的大部分后端代码来自于开源项目 [kikoeru](https://github.com/nortonandrews/kikoeru)
