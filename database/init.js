@@ -2,7 +2,7 @@ const fs = require('fs');
 const { md5 } = require('../auth/utils');
 const { databaseExist, createUser } = require('./db');
 const { config, updateConfig } = require('../config');
-const { createSchema, createTableHistoryIfNotExists, addInsertTimeToTableWorkIfNotExists } = require('./schema');
+const { initDatabase } = require('./schema');
 
 const initApp = async () => {
 
@@ -20,7 +20,7 @@ const initApp = async () => {
 
   if (!databaseExist) {
     initDatabaseDir();
-    await createSchema();
+    await initDatabase();
     try { // 创建内置的管理员账号
       await createUser({
         name: 'admin',
@@ -33,9 +33,6 @@ const initApp = async () => {
       }
     }
   }
-
-  createTableHistoryIfNotExists();
-  addInsertTimeToTableWorkIfNotExists();
 }
 
 module.exports = { initApp };
