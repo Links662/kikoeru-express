@@ -53,9 +53,8 @@ const getTrackList = (id, dir) => recursiveReaddir(dir)
 /**
  * 转换成树状结构
  * @param {Array} tracks 
- * @param {String} workTitle 
  */
-const toTree = (tracks, workTitle, workDir, rootFolder) => {
+const toTree = (tracks, workDir, rootFolder) => {
   const tree = [];
 
   // 插入文件夹
@@ -111,7 +110,6 @@ const toTree = (tracks, workTitle, workDir, rootFolder) => {
         type: 'text',
         hash: track.hash,
         title: track.title,
-        workTitle,
         mediaStreamUrl: textStreamBaseUrl,
         mediaDownloadUrl: textDownloadBaseUrl
       });
@@ -120,7 +118,6 @@ const toTree = (tracks, workTitle, workDir, rootFolder) => {
         type: 'image',
         hash: track.hash,
         title: track.title,
-        workTitle,
         mediaStreamUrl,
         mediaDownloadUrl
       });
@@ -129,7 +126,6 @@ const toTree = (tracks, workTitle, workDir, rootFolder) => {
         type: 'other',
         hash: track.hash,
         title: track.title,
-        workTitle,
         mediaStreamUrl,
         mediaDownloadUrl
       });
@@ -138,7 +134,6 @@ const toTree = (tracks, workTitle, workDir, rootFolder) => {
         type: 'audio',
         hash: track.hash,
         title: track.title,
-        workTitle,
         mediaStreamUrl,
         mediaDownloadUrl
       });
