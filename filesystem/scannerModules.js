@@ -9,6 +9,7 @@ const { getFolderList, deleteCoverImageFromDisk, saveCoverImageToDisk, getTrackL
 const { nameToUUID } = require('../scraper/utils');
 
 const { config } = require('../config');
+const { truncate } = require('lodash');
 
 // 只有在子进程中 process 对象才有 send() 方法
 process.send = process.send || function () {};
@@ -80,7 +81,7 @@ const addMainLog = (log) => {
   });
 };
 
-const emitMainLog = (message, level = 'info', truncate = 3) => {
+const emitMainLog = (message, level = 'info', truncate = 0) => {
   console.log(message);
   addMainLog({
     level: level,
@@ -88,7 +89,7 @@ const emitMainLog = (message, level = 'info', truncate = 3) => {
   });
 };
 
-const emitTaskLog = (message, rjcode, level = 'info', truncate = 15) => {
+const emitTaskLog = (message, rjcode, level = 'info', truncate = 0) => {
   console.log(message);
   addLogForTask(rjcode, {
     level: level,
@@ -155,7 +156,7 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
   } else {
     rjcode = (`000000${id}`).slice(-6);
   }
-  emitTaskLog(` -> [RJ${rjcode}] 从 DLSite 抓取元数据...`, rjcode);
+  emitTaskLog(`[RJ${rjcode}] 从 DLSite 抓取元数据...`, rjcode);
   
   return scrapeWorkMetadataFromDLsite(id, tagLanguage) // 抓取该音声的元数据
     .then((metadata) => {
@@ -181,7 +182,7 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
     })
     .then((metadata) => {
       // 将抓取到的元数据插入到数据库
-      emitTaskLog(` -> [RJ${rjcode}] 元数据抓取成功，准备添加到数据库...`, rjcode);
+      emitTaskLog(`[RJ${rjcode}] 元数据抓取成功，准备添加到数据库...`, rjcode);
       
       metadata.rootFolderName = rootFolderName;
       metadata.dir = dir;
@@ -189,18 +190,18 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
 
       return db.insertWorkMetadata(metadata)
         .then(() => {
-          emitTaskLog(` -> [RJ${rjcode}] 元数据成功添加到数据库.`, rjcode);
+          emitTaskLog(`[RJ${rjcode}] 元数据成功添加到数据库.`, rjcode);
           
           return 'added';
         })
         .catch((err) => {
-          emitTaskLog(`  ! [RJ${rjcode}] 在插入元数据过程中出错: ${err.message}`, rjcode, 'error');
+          emitTaskLog(`[RJ${rjcode}] 在插入元数据过程中出错: ${err.message}`, rjcode, 'error');
           
           return 'failed';
         });
     })
     .catch((err) => {
-      emitTaskLog(`  ! [RJ${rjcode}] 在抓取元数据过程中出错: ${err.message}`, rjcode, 'error');
+      emitTaskLog(`[RJ${rjcode}] 在抓取元数据过程中出错: ${err.message}`, rjcode, 'error');
       
       return 'failed';
     });
@@ -239,21 +240,21 @@ const getCoverImage = (id, types) => {
         .then((imageRes) => {
           return saveCoverImageToDisk(imageRes.data, rjcode, type)
             .then(() => {
-              emitTaskLog(` -> [RJ${rjcode}] 封面 RJ${rjcode}_img_${type}.jpg 下载成功.`, rjcode);
+              emitTaskLog(`[RJ${rjcode}] 封面 RJ${rjcode}_img_${type}.jpg 下载成功.`, rjcode);
 
               return 'added';
             });
         })
         .catch((err) => {
-          emitTaskLog(`  ! [RJ${rjcode}] 在下载封面 RJ${rjcode}_img_${type}.jpg 过程中出错: ${err.message}`, rjcode, 'error');
+          emitTaskLog(`[RJ${rjcode}] 在下载封面 RJ${rjcode}_img_${type}.jpg 过程中出错: ${err.message}`, rjcode, 'error');
           
           return 'failed';
         })
     );
   });
 
-  emitTaskLog(` -> [RJ${rjcode}] 从 DLsite 下载封面...`, rjcode);
-  
+  emitTaskLog(`[RJ${rjcode}] 从 DLsite 下载封面...`, rjcode);
+
   return Promise.all(promises)
     .then((results) => {
       results.forEach(result => {
@@ -298,13 +299,8 @@ const processFolder = (folder) => db.knex('t_work')
       });
       
       if (lostCoverTypes.length) {
-        emitTaskLog(`  ! [RJ${rjcode}] 封面图片缺失，重新下载封面图片...`, rjcode);
         addTask(rjcode);
-        addLogForTask(rjcode, {
-          level: 'info',
-          message: '封面图片缺失，重新下载封面图片...'
-        });
-
+        emitTaskLog(`[RJ${rjcode}] 封面图片缺失，重新下载封面图片...`, rjcode);
         return getCoverImage(folder.id, lostCoverTypes);
       } else {
         return 'skipped';
@@ -407,7 +403,7 @@ const handleDeduplication = (folderList, counts) => {
     emitMainLog(` ! 发现 ${duplicateNum} 个重复的音声文件夹.`, 'info', 3);
     Object.keys(duplicate).forEach(key => {
       const rjcode = formatRJCode(key);
-      emitMainLog(` -> [RJ${rjcode}] 存在多个文件夹:`, 'info', 3);
+      emitMainLog(` -> [RJ${rjcode}] 存在多个文件夹:`, 'info', 4);
       // 这里可以继续遍历打印 duplicate[key] 的路径...
     });
   }
@@ -425,7 +421,7 @@ const processSingleFolder = async (folder, counts) => {
     const logType = isSuccess ? 'info' : 'error';
     const statusText = isSuccess ? '添加成功' : '添加失败';
 
-    console[isSuccess ? 'log' : 'error'](` -> [RJ${rjcode}] ${statusText}! ${result.toUpperCase()}: ${counts[result]}`);
+    console[isSuccess ? 'log' : 'error'](`[RJ${rjcode}] ${statusText}! ${result.toUpperCase()}: ${counts[result]}`);
 
     // 更新任务状态
     const task = tasks.find(t => t.rjcode === rjcode);
@@ -509,16 +505,16 @@ const updateMetadata = (id, options = {}) => {
   return scrapeProcessor() // 抓取该音声的元数据
     .then((metadata) => {
       // 将抓取到的元数据插入到数据库
-      emitTaskLog(` -> [RJ${rjcode}] 元数据抓取成功，准备更新元数据...`, rjcode);
+      emitTaskLog(`[RJ${rjcode}] 元数据抓取成功，准备更新元数据...`, rjcode);
       metadata.id = id;
       return db.updateWorkMetadata(metadata, options)
         .then(() => {
-          emitTaskLog(` -> [RJ${rjcode}] 元数据更新成功`, rjcode);
+          emitTaskLog(`[RJ${rjcode}] 元数据更新成功`, rjcode);
           return 'updated';
         });
     })
     .catch((err) => {
-      emitTaskLog(`  ! [RJ${rjcode}] 在抓取元数据过程中出错: ${err}`, rjcode, 'error');
+      emitTaskLog(`[RJ${rjcode}] 在抓取元数据过程中出错: ${err}`, rjcode, 'error');
       return 'failed';
     });
 };
