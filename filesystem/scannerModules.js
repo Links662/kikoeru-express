@@ -9,6 +9,7 @@ const { getFolderList, deleteCoverImageFromDisk, saveCoverImageToDisk, getTrackL
 const { nameToUUID } = require('../scraper/utils');
 
 const { config } = require('../config');
+const { truncate } = require('lodash');
 
 // 只有在子进程中 process 对象才有 send() 方法
 process.send = process.send || function () {};
@@ -80,7 +81,7 @@ const addMainLog = (log) => {
   });
 };
 
-const emitMainLog = (message, level = 'info', truncate = 3) => {
+const emitMainLog = (message, level = 'info', truncate = 0) => {
   console.log(message);
   addMainLog({
     level: level,
@@ -88,7 +89,7 @@ const emitMainLog = (message, level = 'info', truncate = 3) => {
   });
 };
 
-const emitTaskLog = (message, rjcode, level = 'info', truncate = 15) => {
+const emitTaskLog = (message, rjcode, level = 'info', truncate = 0) => {
   console.log(message);
   addLogForTask(rjcode, {
     level: level,
@@ -108,12 +109,7 @@ process.on('message', (m) => {
       }
     });
   } else if (m.exit) {
-    console.error(' ! 终止扫描进程.');
-    addMainLog({
-      level: 'error',
-      message: '终止扫描进程.'
-    });
-
+    emitMainLog('终止扫描进程.', 'error', 0);
     process.exit(1);
   }
 });
@@ -160,11 +156,7 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
   } else {
     rjcode = (`000000${id}`).slice(-6);
   }
-  console.log(` -> [RJ${rjcode}] 从 DLSite 抓取元数据...`);
-  addLogForTask(rjcode, {
-    level: 'info',
-    message: '从 DLSite 抓取元数据...'
-  });
+  emitTaskLog(`[RJ${rjcode}] 从 DLSite 抓取元数据...`, rjcode);
   
   return scrapeWorkMetadataFromDLsite(id, tagLanguage) // 抓取该音声的元数据
     .then((metadata) => {
@@ -190,11 +182,7 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
     })
     .then((metadata) => {
       // 将抓取到的元数据插入到数据库
-      console.log(` -> [RJ${rjcode}] 元数据抓取成功，准备添加到数据库...`);
-      addLogForTask(rjcode, {
-        level: 'info',
-        message: '元数据抓取成功，准备添加到数据库...'
-      });
+      emitTaskLog(`[RJ${rjcode}] 元数据抓取成功，准备添加到数据库...`, rjcode);
       
       metadata.rootFolderName = rootFolderName;
       metadata.dir = dir;
@@ -202,30 +190,18 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
 
       return db.insertWorkMetadata(metadata)
         .then(() => {
-          console.log(` -> [RJ${rjcode}] 元数据成功添加到数据库.`);
-          addLogForTask(rjcode, {
-            level: 'info',
-            message: '元数据成功添加到数据库.'
-          });
+          emitTaskLog(`[RJ${rjcode}] 元数据成功添加到数据库.`, rjcode);
           
           return 'added';
         })
         .catch((err) => {
-          console.error(`  ! [RJ${rjcode}] 在插入元数据过程中出错: ${err.message}`);
-          addLogForTask(rjcode, {
-            level: 'error',
-            message: `在插入元数据过程中出错: ${err.message}`
-          });
+          emitTaskLog(`[RJ${rjcode}] 在插入元数据过程中出错: ${err.message}`, rjcode, 'error');
           
           return 'failed';
         });
     })
     .catch((err) => {
-      console.error(`  ! [RJ${rjcode}] 在抓取元数据过程中出错: ${err.message}`);
-      addLogForTask(rjcode, {
-        level: 'error',
-        message: `在抓取元数据过程中出错: ${err.message}`
-      });
+      emitTaskLog(`[RJ${rjcode}] 在抓取元数据过程中出错: ${err.message}`, rjcode, 'error');
       
       return 'failed';
     });
@@ -264,33 +240,21 @@ const getCoverImage = (id, types) => {
         .then((imageRes) => {
           return saveCoverImageToDisk(imageRes.data, rjcode, type)
             .then(() => {
-              console.log(` -> [RJ${rjcode}] 封面 RJ${rjcode}_img_${type}.jpg 下载成功.`);
-              addLogForTask(rjcode, {
-                level: 'info',
-                message: `封面 RJ${rjcode}_img_${type}.jpg 下载成功.`
-              });
+              emitTaskLog(`[RJ${rjcode}] 封面 RJ${rjcode}_img_${type}.jpg 下载成功.`, rjcode);
 
               return 'added';
             });
         })
         .catch((err) => {
-          console.error(`  ! [RJ${rjcode}] 在下载封面 RJ${rjcode}_img_${type}.jpg 过程中出错: ${err.message}`);
-          addLogForTask(rjcode, {
-            level: 'error',
-            message: `在下载封面 RJ${rjcode}_img_${type}.jpg 过程中出错: ${err.message}`
-          });
+          emitTaskLog(`[RJ${rjcode}] 在下载封面 RJ${rjcode}_img_${type}.jpg 过程中出错: ${err.message}`, rjcode, 'error');
           
           return 'failed';
         })
     );
   });
 
-  console.log(` -> [RJ${rjcode}] 从 DLsite 下载封面...`);
-  addLogForTask(rjcode, {
-    level: 'info',
-    message: `从 DLsite 下载封面...`
-  });
-  
+  emitTaskLog(`[RJ${rjcode}] 从 DLsite 下载封面...`, rjcode);
+
   return Promise.all(promises)
     .then((results) => {
       results.forEach(result => {
@@ -335,13 +299,8 @@ const processFolder = (folder) => db.knex('t_work')
       });
       
       if (lostCoverTypes.length) {
-        console.log(`  ! [RJ${rjcode}] 封面图片缺失，重新下载封面图片...`);
         addTask(rjcode);
-        addLogForTask(rjcode, {
-          level: 'info',
-          message: '封面图片缺失，重新下载封面图片...'
-        });
-
+        emitTaskLog(`[RJ${rjcode}] 封面图片缺失，重新下载封面图片...`, rjcode);
         return getCoverImage(folder.id, lostCoverTypes);
       } else {
         return 'skipped';
@@ -398,11 +357,7 @@ const performCleanup = async () => {
           deleteCoverImageFromDisk(rjcode)    
             .catch((err) => {
               if (err && err.code !== 'ENOENT') { 
-                console.error(`  ! [RJ${rjcode}] 在删除封面过程中出错: ${err.message}`);
-                addMainLog({
-                  level: 'error',
-                  message: `[RJ${rjcode}] 在删除封面过程中出错: ${err.message}`
-                });
+                emitMainLog(`[RJ${rjcode}] 在删除封面过程中出错: ${err.message}`, 'error', 0);
               }
             })
             .then(() => resolve(result));
@@ -424,10 +379,9 @@ const prepareEnvironment = () => {
 };
 
 const runCleanupStep = async () => {
-  console.log(' * 清理本地不再存在的音声的数据与封面图片...');
-  addMainLog({ level: 'info', message: '清理本地不再存在的音声的数据与封面图片...' });
+  emitMainLog('清理本地不再存在的音声的数据与封面图片...', 'info', 0);
   await performCleanup();
-  console.log(' * 清理完成. 现在开始扫描...');
+  emitMainLog('清理完成. 现在开始扫描...', 'info', 0);
 };
 
 const collectAllFolders = async () => {
@@ -437,7 +391,7 @@ const collectAllFolders = async () => {
       list.push(folder);
     }
   }
-  console.log(` * 共找到 ${list.length} 个音声文件夹.`);
+  emitMainLog(` * 共找到 ${list.length} 个音声文件夹.`, 'info', 3);
   return list;
 };
 
@@ -446,10 +400,10 @@ const handleDeduplication = (folderList, counts) => {
   const duplicateNum = folderList.length - uniqueList.length;
 
   if (duplicateNum > 0) {
-    console.log(` ! 发现 ${duplicateNum} 个重复的音声文件夹.`);
+    emitMainLog(` ! 发现 ${duplicateNum} 个重复的音声文件夹.`, 'info', 3);
     Object.keys(duplicate).forEach(key => {
       const rjcode = formatRJCode(key);
-      console.log(` -> [RJ${rjcode}] 存在多个文件夹:`);
+      emitMainLog(` -> [RJ${rjcode}] 存在多个文件夹:`, 'info', 4);
       // 这里可以继续遍历打印 duplicate[key] 的路径...
     });
   }
@@ -467,7 +421,7 @@ const processSingleFolder = async (folder, counts) => {
     const logType = isSuccess ? 'info' : 'error';
     const statusText = isSuccess ? '添加成功' : '添加失败';
 
-    console[isSuccess ? 'log' : 'error'](` -> [RJ${rjcode}] ${statusText}! ${result.toUpperCase()}: ${counts[result]}`);
+    console[isSuccess ? 'log' : 'error'](`[RJ${rjcode}] ${statusText}! ${result.toUpperCase()}: ${counts[result]}`);
 
     // 更新任务状态
     const task = tasks.find(t => t.rjcode === rjcode);
@@ -508,7 +462,7 @@ const performScan = async () => {
 
     // 2. 数据清理阶段
     if (config.skipCleanup) {
-      console.log(' * 根据设置跳过清理.');
+      emitMainLog(' * 根据设置跳过清理.', 'info', 3);
     } else {
       await runCleanupStep();
     }
@@ -527,8 +481,7 @@ const performScan = async () => {
     finalizeScan(counts);
 
   } catch (err) {
-    console.error(` ! 扫描过程中出错: ${err.message}`);
-    addMainLog({ level: 'error', message: err.message });
+    emitMainLog(` ! 扫描过程中出错: ${err.message}`, 'error', 3);
     process.exit(1);
   }
 };
@@ -552,16 +505,16 @@ const updateMetadata = (id, options = {}) => {
   return scrapeProcessor() // 抓取该音声的元数据
     .then((metadata) => {
       // 将抓取到的元数据插入到数据库
-      emitTaskLog(` -> [RJ${rjcode}] 元数据抓取成功，准备更新元数据...`, rjcode);
+      emitTaskLog(`[RJ${rjcode}] 元数据抓取成功，准备更新元数据...`, rjcode);
       metadata.id = id;
       return db.updateWorkMetadata(metadata, options)
         .then(() => {
-          emitTaskLog(` -> [RJ${rjcode}] 元数据更新成功`, rjcode);
+          emitTaskLog(`[RJ${rjcode}] 元数据更新成功`, rjcode);
           return 'updated';
         });
     })
     .catch((err) => {
-      emitTaskLog(`  ! [RJ${rjcode}] 在抓取元数据过程中出错: ${err}`, rjcode, 'error');
+      emitTaskLog(`[RJ${rjcode}] 在抓取元数据过程中出错: ${err}`, rjcode, 'error');
       return 'failed';
     });
 };
@@ -597,11 +550,7 @@ const fixVoiceActorBug = () => {
 
 const refreshWorks = async (query, idColumnName, processor) => {
   return query.then(async (works) => {
-    console.log(` * 共 ${works.length} 个音声.`);
-    addMainLog({
-      level: 'info',
-      message: `共 ${works.length} 个作品. 开始刷新`
-    });
+    emitMainLog(` * 共 ${works.length} 个音声. 开始刷新`, 'info', 3);
 
     const counts = {
       updated: 0,
@@ -630,10 +579,10 @@ const refreshWorks = async (query, idColumnName, processor) => {
       })
     });
     await Promise.all(promises);
-    emitMainLog(` * 完成元数据更新 ${counts.updated} 个，失败 ${counts.failed} 个.`);
+    emitMainLog(` * 完成元数据更新 ${counts.updated} 个，失败 ${counts.failed} 个.`, 'info', 3);
 
     return counts;
   });
 };
 
-module.exports = { performScan, performUpdate}
+module.exports = { performScan, performUpdate };
