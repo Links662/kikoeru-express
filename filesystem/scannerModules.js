@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const Jimp = require('jimp');
 const LimitPromise = require('limit-promise'); // 限制并发数量
 
 const axios = require('../scraper/axios.js'); // 数据请求
@@ -213,58 +214,50 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
  * @param {number} id work id
  * @param {Array} types img types: ['main', 'sam', 'sam@2x', 'sam@3x', '240x240', '360x360']
  */
-const getCoverImage = (id, types) => {
-  //const rjcode = (`000000${id}`).slice(-6); // zero-pad to 6 digits
-  let rjcode ;
-  if (id>=1000000) {
+const getCoverImage = async (id, types) => {
+  let rjcode;
+  if (id >= 1000000) {
     rjcode = (`00000000${id}`).slice(-8);
   } else {
     rjcode = (`000000${id}`).slice(-6);
   }
+
   const id2 = (id % 1000 === 0) ? id : parseInt(id / 1000) * 1000 + 1000;
-  //const rjcode2 = (`000000${id2}`).slice(-6); // zero-pad to 6 digits
-  let rjcode2 ;
-  if (id2>=1000000) {
+  let rjcode2;
+  if (id2 >= 1000000) {
     rjcode2 = (`00000000${id2}`).slice(-8);
   } else {
     rjcode2 = (`000000${id2}`).slice(-6);
   }
-  const promises = [];
-  types.forEach(type => {
-    let url = `https://img.dlsite.jp/modpub/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_${type}.jpg`;
-    if (type === '240x240'|| type === '360x360') {
-      url = `https://img.dlsite.jp/resize/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_main_${type}.jpg`;
-    }
-    promises.push(
-      axios.retryGet(url, { responseType: "stream", retry: {} })
-        .then((imageRes) => {
-          return saveCoverImageToDisk(imageRes.data, rjcode, type)
-            .then(() => {
-              emitTaskLog(`[RJ${rjcode}] 封面 RJ${rjcode}_img_${type}.jpg 下载成功.`, rjcode);
-
-              return 'added';
-            });
-        })
-        .catch((err) => {
-          emitTaskLog(`[RJ${rjcode}] 在下载封面 RJ${rjcode}_img_${type}.jpg 过程中出错: ${err.message}`, rjcode, 'error');
-          
-          return 'failed';
-        })
-    );
-  });
 
   emitTaskLog(`[RJ${rjcode}] 从 DLsite 下载封面...`, rjcode);
 
-  return Promise.all(promises)
-    .then((results) => {
-      results.forEach(result => {
-        if (result === 'failed') {
-          return 'failed';
-        }
-      });
+  const results = [];
 
-      return 'added';
-    });
+  for (const type of types) {
+    let url = `https://img.dlsite.jp/modpub/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_${type}.jpg`;
+    if (type === '240x240' || type === '360x360') {
+      url = `https://img.dlsite.jp/resize/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_main_${type}.jpg`;
+    }
+
+    try {
+      const imageRes = await axios.retryGet(url, { responseType: "stream", retry: {} });
+      await saveCoverImageToDisk(imageRes.data, rjcode, type);
+
+      emitTaskLog(`[RJ${rjcode}] 封面 RJ${rjcode}_img_${type}.jpg 下载成功.`, rjcode);
+      results.push('added');
+    } catch (err) {
+      emitTaskLog(`[RJ${rjcode}] 在下载封面 RJ${rjcode}_img_${type}.jpg 过程中出错: ${err.message}`, rjcode, 'error');
+      results.push('failed');
+    }
+  }
+
+  // 检查结果
+  if (results.includes('failed')) {
+    return 'failed';
+  }
+
+  return 'added';
 };
 
 /**
@@ -272,57 +265,78 @@ const getCoverImage = (id, types) => {
  * 返回一个 Promise 对象，处理结果: 'added', 'skipped' or 'failed'
  * @param {string} folder 音声文件夹对象 { relativePath: '相对路径', rootFolderName: '根文件夹别名', id: '音声ID' }
  */
-const processFolder = (folder) => db.knex('t_work')
-  .select('id')
-  .where('id', '=', folder.id)
-  .count()
-  .first()
-  .then((res) => {
-    //const rjcode = (`000000${folder.id}`).slice(-6); // zero-pad to 6 digits
-    let rjcode ;
-    if (folder.id>=1000000) {
-      rjcode = (`00000000${folder.id}`).slice(-8);
-    } else {
-      rjcode = (`000000${folder.id}`).slice(-6);
-    }
-    const coverTypes = ['main', 'sam', '240x240'];
-    const count = res['count(*)'];
-    if (count) { // 查询数据库，检查是否已经写入该音声的元数据
-      // 已经成功写入元数据
-      // 检查音声封面图片是否缺失
-      const lostCoverTypes = [];
-      coverTypes.forEach(type => {
-        const coverPath = path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`);
-        if (!fs.existsSync(coverPath)) {
-          lostCoverTypes.push(type);
-        }
-      });
-      
-      if (lostCoverTypes.length) {
-        addTask(rjcode);
-        emitTaskLog(`[RJ${rjcode}] 封面图片缺失，重新下载封面图片...`, rjcode);
-        return getCoverImage(folder.id, lostCoverTypes);
-      } else {
-        return 'skipped';
-      }
-    } else {
-      console.log(` * 发现新文件夹: "${folder.absolutePath}"`);
+const processFolder = async (folder) => {
+  const res = await db.knex('t_work')
+    .select('id')
+    .where('id', '=', folder.id)
+    .count()
+    .first();
+
+  let rjcode;
+  if (folder.id >= 1000000) {
+    rjcode = (`00000000${folder.id}`).slice(-8);
+  } else {
+    rjcode = (`000000${folder.id}`).slice(-6);
+  }
+
+  const coverTypes = ['main', 'sam', '240x240'];
+  const count = res['count(*)'];
+
+  if (count) { // 已写入元数据
+    const mainPath = path.join(config.coverFolderDir, `RJ${rjcode}_img_main.jpg`);
+    const lostCoverTypes = [];
+
+    coverTypes.forEach(type => {
+      const coverPath = path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`);
+      if (!fs.existsSync(coverPath)) lostCoverTypes.push(type);
+    });
+
+    if (fs.existsSync(mainPath)) {
       addTask(rjcode);
-      addLogForTask(rjcode, {
-        level: 'info',
-        message: `发现新文件夹: "${folder.absolutePath}"`
-      });
-      
-      return getMetadata(folder.id, folder.rootFolderName, folder.relativePath, config.tagLanguage) // 获取元数据
-        .then((result) => {
-          if (result === 'failed') { // 如果获取元数据失败，跳过封面图片下载
-            return 'failed';
-          } else { // 下载封面图片
-            return getCoverImage(folder.id, coverTypes);
-          }
-        });
+      for (const type of lostCoverTypes) {
+        const outputPath = path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`);
+
+        if (type === '240x240') {
+          const image = await Jimp.read(mainPath);
+          await image.resize(240, Jimp.AUTO)
+            .quality(90)
+            .writeAsync(outputPath);
+          emitTaskLog(`[RJ${rjcode}] 已由 main 生成 240 宽等比例缩略图`, rjcode);
+        }
+
+        if (type === 'sam') {
+          const image = await Jimp.read(mainPath);
+          await image.resize(100, Jimp.AUTO)
+            .quality(85)
+            .writeAsync(outputPath);
+          emitTaskLog(`[RJ${rjcode}] 已由 main 生成 sam(宽100等比例)`, rjcode);
+        }
+      }
+      return 'added';
     }
-  });
+    else if (lostCoverTypes.length) {
+      addTask(rjcode);
+      emitTaskLog(`[RJ${rjcode}] 封面图片缺失，重新下载封面图片...`, rjcode);
+      return await getCoverImage(folder.id, lostCoverTypes);
+    }
+    else {
+      return 'skipped';
+    }
+  }
+  else {
+    console.log(` * 发现新文件夹: "${folder.absolutePath}"`);
+    addTask(rjcode);
+    addLogForTask(rjcode, {
+      level: 'info',
+      message: `发现新文件夹: "${folder.absolutePath}"`
+    });
+
+    const result = await getMetadata(folder.id, folder.rootFolderName, folder.relativePath, config.tagLanguage);
+
+    if (result === 'failed') return 'failed';
+    return await getCoverImage(folder.id, coverTypes);
+  }
+};
 
 const MAX = config.maxParallelism; // 并发请求上限
 const limitP = new LimitPromise(MAX); // 核心控制器
