@@ -290,34 +290,35 @@ const processFolder = async (folder) => {
       const coverPath = path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`);
       if (!fs.existsSync(coverPath)) lostCoverTypes.push(type);
     });
+    if (lostCoverTypes.length) {
+      if (fs.existsSync(mainPath)) {
+        addTask(rjcode);
+        for (const type of lostCoverTypes) {
+          const outputPath = path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`);
 
-    if (fs.existsSync(mainPath)) {
-      addTask(rjcode);
-      for (const type of lostCoverTypes) {
-        const outputPath = path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`);
+          if (type === '240x240') {
+            const image = await Jimp.read(mainPath);
+            await image.resize(240, Jimp.AUTO)
+              .quality(90)
+              .writeAsync(outputPath);
+            emitTaskLog(`[RJ${rjcode}] 已由 main 生成 240 宽等比例缩略图`, rjcode);
+          }
 
-        if (type === '240x240') {
-          const image = await Jimp.read(mainPath);
-          await image.resize(240, Jimp.AUTO)
-            .quality(90)
-            .writeAsync(outputPath);
-          emitTaskLog(`[RJ${rjcode}] 已由 main 生成 240 宽等比例缩略图`, rjcode);
+          if (type === 'sam') {
+            const image = await Jimp.read(mainPath);
+            await image.resize(100, Jimp.AUTO)
+              .quality(85)
+              .writeAsync(outputPath);
+            emitTaskLog(`[RJ${rjcode}] 已由 main 生成 sam(宽100等比例)`, rjcode);
+          }
         }
-
-        if (type === 'sam') {
-          const image = await Jimp.read(mainPath);
-          await image.resize(100, Jimp.AUTO)
-            .quality(85)
-            .writeAsync(outputPath);
-          emitTaskLog(`[RJ${rjcode}] 已由 main 生成 sam(宽100等比例)`, rjcode);
-        }
+        return 'added';
       }
-      return 'added';
-    }
-    else if (lostCoverTypes.length) {
-      addTask(rjcode);
-      emitTaskLog(`[RJ${rjcode}] 封面图片缺失，重新下载封面图片...`, rjcode);
-      return await getCoverImage(folder.id, lostCoverTypes);
+      else {
+        addTask(rjcode);
+        emitTaskLog(`[RJ${rjcode}] 封面图片缺失，重新下载封面图片...`, rjcode);
+        return await getCoverImage(folder.id, lostCoverTypes);
+      }
     }
     else {
       return 'skipped';
