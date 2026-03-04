@@ -7,7 +7,6 @@ FROM node:14-alpine AS build-dep
 # Create app directory
 WORKDIR /usr/src/kikoeru
 
-
 RUN apk update && apk add python3 make gcc g++ 
 
 # Install app dependencies
@@ -24,8 +23,12 @@ WORKDIR /frontend
 # @quasar/app v2 no longer uses this deprecated package, so this line will be removed in the future
 RUN npm install -g @quasar/cli@1.2.0
 
-COPY ./kikoeru-quasar .
+# 先只复制 package 文件以利用缓存
+COPY ./kikoeru-quasar/package*.json ./
 RUN npm ci
+
+# 再复制源代码进行构建
+COPY ./kikoeru-quasar .
 RUN quasar build && quasar build -m pwa
 
 # Final stage
