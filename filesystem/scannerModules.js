@@ -418,7 +418,7 @@ const handleDeduplication = (folderList, counts) => {
     emitMainLog(` ! 发现 ${duplicateNum} 个重复的音声文件夹.`, 'info', 3);
     Object.keys(duplicate).forEach(key => {
       const rjcode = formatRJCode(key);
-      emitMainLog(` -> [RJ${rjcode}] 存在多个文件夹:`, 'info', 4);
+      emitMainLog(` -> [RJ${rjcode}] 存在多个文件夹.`, 'info', 4);
       // 这里可以继续遍历打印 duplicate[key] 的路径...
     });
   }
