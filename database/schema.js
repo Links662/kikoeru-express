@@ -78,15 +78,16 @@ const createHistoryTable = async () => {
   if (exists) return;
 
   await knex.schema.createTable('t_history', (table) => {
-    table.increments('id').primary();
-    table.string('user_name').notNullable().references('name').inTable('t_user').onDelete('CASCADE');
-    table.integer('work_id').notNullable().references('id').inTable('t_work').onDelete('CASCADE');
-    table.string('file_index').notNullable();
-    table.string('file_name');
-    table.integer('play_time');
-    table.integer('total_time');
-    table.timestamps(true, true);
-    table.unique(['user_name', 'work_id', 'file_index']);
+      table.integer('work_id').notNullable().references('id').inTable('t_work').onDelete('CASCADE');
+      table.string('user_name').notNullable().references('name').inTable('t_user').onDelete('CASCADE');
+      table.string('file_index').notNullable();
+      table.string('file_name');
+      table.integer('play_time');
+      table.integer('total_time');
+      table.timestamps(true, true);
+      
+      // 设置联合主键
+      table.primary(['work_id', 'user_name']);
   });
   console.log(' * 成功构建历史记录表.');
 };

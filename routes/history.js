@@ -39,7 +39,7 @@ router.get('/getByWorkIdIndex',
     const username = config.auth ? req.user.name : 'admin';
 
     try {
-      let history = await db.getHistoryByWorkIdIndex(username, req.query.work_id, req.query.file_index)
+      let history = await db.getHistoryByWorkId(username, req.query.work_id, req.query.file_index)
 
       if (history) {
         history.work_id = Number(history.work_id)

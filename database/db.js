@@ -474,13 +474,24 @@ const getMetadata = ({field = 'circle', id} = {}) => {
     .first()
 }
 
-// 插入历史数据
-const insertHistory = (username, work_id, file_index, file_name, play_time, total_time) =>  knex.transaction(async(trx) => {
-    await trx.raw('INSERT OR REPLACE INTO t_history (user_name, work_id, file_index, file_name, play_time, total_time) VALUES (?, ?, ?, ?, ?, ?);', [username, work_id, file_index, file_name, play_time, total_time]);
-});
+// 插入历史数据 - 使用 ON CONFLICT 处理主键冲突
+const insertHistory = (username, work_id, file_index, file_name, play_time, total_time) => 
+  knex.transaction(async (trx) => {
+    await trx.raw(`
+      INSERT INTO t_history (user_name, work_id, file_index, file_name, play_time, total_time) 
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT (work_id, user_name) 
+      DO UPDATE SET 
+        file_index = EXCLUDED.file_index,
+        file_name = EXCLUDED.file_name,
+        play_time = EXCLUDED.play_time,
+        total_time = EXCLUDED.total_time,
+        updated_at = CURRENT_TIMESTAMP
+    `, [username, work_id, file_index, file_name, play_time, total_time]);
+  });
 
-// 读取某用户 work id, file index的历史数据
-const getHistoryByWorkIdIndex = async (username, work_id, file_index) => {
+// 读取某用户 work_id 的历史数据
+const getHistoryByWorkId = async (username, work_id) => {
   return knex('t_history')
     .select([
       'user_name',
@@ -493,30 +504,18 @@ const getHistoryByWorkIdIndex = async (username, work_id, file_index) => {
     ])
     .where({
       user_name: username,
-      work_id,
-      file_index
+      work_id
     })
-    .first()
+    .first(); // 因为主键唯一，所以一定只有一条记录
 }
 
-// GROUP BY workid 读取work id最后一条历史记录
+// GROUP BY work_id 读取每个作品的最后一条历史记录
 const getHistoryGroupByWorkId = async (username, limit = 100) => {
-  const tmp = knex('t_history')
+  return knex('t_history')
     .select('*')
     .where('user_name', username)
-    .as('tmp')
-
-  return knex
-    .select('a.*')
-    .from({ a: tmp })
-    .leftJoin({ b: tmp }, function () {
-      this.on('a.work_id', '=', 'b.work_id')
-        .andOn('a.updated_at', '<', 'b.updated_at')
-    })
-    .whereNull('b.updated_at')
-    .groupBy('a.work_id')
-    .orderBy('a.updated_at', 'desc')
-    .limit(limit)
+    .orderBy('updated_at', 'desc')
+    .limit(limit);
 }
 
 // 删除一个用户所有历史记录
@@ -530,6 +529,6 @@ module.exports = {
   getLabels, getMetadata,
   createUser, updateUserPassword, resetUserPassword, deleteUser,
   getWorksWithReviews, updateUserReview, deleteUserReview,
-  insertHistory, getHistoryByWorkIdIndex, getHistoryGroupByWorkId,deleteHistoryByUserName,
+  insertHistory, getHistoryByWorkId, getHistoryGroupByWorkId,deleteHistoryByUserName,
   databaseExist
 };
