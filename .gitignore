@@ -134,3 +134,5 @@ Release-Template.md
 
 # Dependecy graph
 graph.svg
+*.sh
+kikoeru-quasar
