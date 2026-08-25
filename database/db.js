@@ -491,7 +491,7 @@ const insertHistory = (username, work_id, file_index, file_name, play_time, tota
   });
 
 // 读取某用户 work_id 的历史数据
-const getHistoryByWorkId = async (username, work_id) => {
+const getHistoryByWorkId = async (username, work_id, file_index) => {
   return knex('t_history')
     .select([
       'user_name',
@@ -504,7 +504,8 @@ const getHistoryByWorkId = async (username, work_id) => {
     ])
     .where({
       user_name: username,
-      work_id
+      work_id,
+      file_index
     })
     .first(); // 因为主键唯一，所以一定只有一条记录
 }

@@ -12,6 +12,7 @@ RUN apk update && apk add python3 make gcc g++
 # Install app dependencies
 # A wildcard is used to ensure both package.json AND package-lock.json are copied
 # where available (npm@5+)
+RUN npm config set registry https://registry.npmmirror.com
 COPY package*.json ./
 RUN npm ci --only=production
 
