@@ -193,7 +193,6 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
-          pull: true
           tags: |
             muveex/kikoeru-express:${{ steps.source_name.outputs.SOURCE_NAME }}
             muveex/kikoeru-express:dev

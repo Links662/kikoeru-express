@@ -36,6 +36,12 @@ kikoeru-express
 └── ...
 ```
 
+Windows 下同步前端源码（跳过缓存目录，避免每次复制 500MB 的 node_modules；`/MIR` 会删除目标目录里多余的旧文件）：
+
+```powershell
+robocopy ..\kikoeru-quasar .\kikoeru-quasar /MIR /XD node_modules .git dist .quasar
+```
+
 手动编译构建镜像
 ```bash
 docker build -t links/kikoeru-dev .
@@ -45,6 +51,13 @@ docker build -t links/kikoeru-dev .
 ```bash
 docker compose up -d
 ```
+
+#### 构建缓存说明
+
+- 构建日志里的 `load metadata for docker.io/library/node:14-alpine` 只是向 registry 校验 tag，本地已有该镜像时不会重新下载；出现 `Pulling fs layer` / `Downloading` 才是真的在下载。
+- `docker system prune -a`、`docker image prune -a` 会把 `node:14-alpine` 一起删掉，下次构建必然重新下载。日常清理用 `docker builder prune` 或 `docker system prune`（不加 `-a`）。
+- 用 `docker buildx` 的 docker-container 构建器（多平台构建走的就是这条路）时，镜像存在构建器容器里，`docker images` 里看不到；构建器被重建或清理后基础镜像会重新下载，属于正常现象。
+- npm 依赖默认走 npmmirror，需要官方源时：`docker build --build-arg NPM_REGISTRY=https://registry.npmjs.org -t links/kikoeru-dev .`
 
 ## 技术栈
 - axios (网络请求)
@@ -88,6 +101,10 @@ docker compose up -d
 ## 其他
 ### TODO
 - [x] 接口性能优化，从3s优化到60ms
+- [x] 新增收藏功能：支持收藏社团 / 标签 / 声优，收藏数据按用户隔离（新增 `t_favourite` 表与收藏接口）
+- [x] 历史记录改为每个作品仅保留一条记录：`t_history` 改用 `(work_id, user_name)` 联合主键，写入使用 `ON CONFLICT` 覆盖更新
+- [x] 数据库外键补充级联更新 / 删除（`t_work`、`r_tag_work`、`t_review`、`t_history` 等），dbVersion 升级至 20261012
+- [x] Dockerfile 构建改用 npmmirror 镜像源加速依赖安装
 
 ### 感谢
 本项目的大部分后端代码来自于开源项目 [kikoeru](https://github.com/nortonandrews/kikoeru)

@@ -1,5 +1,6 @@
 # Git
 .git
+**/.git
 
 # Package
 package/*
@@ -14,9 +15,11 @@ covers/*
 # SQLite
 sqlite/*
 
-# Node modules
+# Node modules（也包括复制进来的 kikoeru-quasar/node_modules）
 node_modules
+**/node_modules
 
+# Document
 *.md
 
 # Storage
@@ -31,12 +34,17 @@ Release-Template.md
 
 # GitHub
 .github
+**/.github
 
 # Env
 .env
 
-# Use build artifact from muveex/kikoeru-quasar instead
+# 前端构建产物与缓存（镜像里的 dist 由 build-frontend 阶段生成）
 dist
+**/dist
+**/.quasar
 
-# GitHub Actions
-.github
+# 前端仅开发时用的目录
+kikoeru-quasar/docs
+kikoeru-quasar/cert
+kikoeru-quasar/nginx
