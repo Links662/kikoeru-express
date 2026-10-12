@@ -330,13 +330,13 @@ const getLabels = (field) => {
   if (field === 'circle') {
     return knex('t_work')
       .join(`t_${field}`, `${field}_id`, '=', `t_${field}.id`)
-      .select(`t_${field}.id`, 'name', `t_${field}.favourite`)
+      .select(`t_${field}.id`, 'name')
       .groupBy(`${field}_id`)
       .count(`${field}_id as count`);
   } else if (field === 'tag' || field === 'va') {
     return knex(`r_${field}_work`)
       .join(`t_${field}`, `${field}_id`, '=', 'id')
-      .select('id', 'name', `t_${field}.favourite`)
+      .select('id', 'name')
       .groupBy(`${field}_id`)
       .count(`${field}_id as count`);
   }
@@ -475,19 +475,51 @@ const getMetadata = ({field = 'circle', id} = {}) => {
 }
 
 /**
- * 设置社团/标签/声优的收藏状态
+ * 获取某个用户对某类（社团/标签/声优）的收藏
+ * @param {String} username 用户名
+ * @param {String} field ['circle', 'tag', 'va'] 中的一个
+ * @returns {Promise<Array>} [{ item_id }]
+ */
+const getFavourites = (username, field) => {
+  const validFields = ['circle', 'tag', 'va'];
+  if (!validFields.includes(field)) throw new Error('无效的查询域');
+  return knex('t_favourite')
+    .select('item_id')
+    .where({ user_name: username, field: field });
+}
+
+/**
+ * 设置某个用户对社团/标签/声优的收藏状态
  * @param {Object} options
+ * @param {String} options.username 用户名
  * @param {String} options.field ['circle', 'tag', 'va'] 中的一个
  * @param {String|Number} options.id 收藏对象的 id
  * @param {Boolean} options.favourite 是否收藏
- * @returns {Promise<Number>} 受影响的行数，0 表示对象不存在
+ * @returns {Promise<Boolean>} 收藏对象是否存在
  */
-const setFavourite = ({field = 'circle', id, favourite} = {}) => {
+const setFavourite = async ({username, field = 'circle', id, favourite} = {}) => {
   const validFields = ['circle', 'tag', 'va'];
   if (!validFields.includes(field)) throw new Error('无效的查询域');
-  return knex(`t_${field}`)
-    .where('id', '=', id)
-    .update({ favourite: favourite ? 1 : 0 });
+
+  // 对象不存在时不写入收藏，由调用方返回 404
+  const target = await knex(`t_${field}`).where('id', '=', id).first();
+  if (!target) return false;
+
+  // t_circle/t_tag 的 id 是整数，t_va 的 id 是字符串，统一按字符串存
+  const itemId = String(id);
+
+  if (favourite) {
+    await knex.raw(
+      'INSERT OR IGNORE INTO t_favourite (user_name, field, item_id) VALUES (?, ?, ?)',
+      [username, field, itemId]
+    );
+  } else {
+    await knex('t_favourite')
+      .where({ user_name: username, field: field, item_id: itemId })
+      .del();
+  }
+
+  return true;
 }
 
 // 插入历史数据 - 使用 ON CONFLICT 处理主键冲突
@@ -543,7 +575,7 @@ const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) 
 
 module.exports = {
   knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksCount, getWorksByKeyWord, updateWorkMetadata,
-  getLabels, getMetadata, setFavourite,
+  getLabels, getMetadata, getFavourites, setFavourite,
   createUser, updateUserPassword, resetUserPassword, deleteUser,
   getWorksWithReviews, updateUserReview, deleteUserReview,
   insertHistory, getHistoryByWorkId, getHistoryGroupByWorkId,deleteHistoryByUserName,

@@ -173,12 +173,13 @@ router.put('/:field(circle|tag|va)s/:id/favourite',
     }
 
     db.setFavourite({
+      username: config.auth ? req.user.name : 'admin',
       field: req.params.field,
       id: req.params.id,
       favourite: req.body.favourite
     })
-      .then(count => {
-        if (count === 0) {
+      .then(exists => {
+        if (!exists) {
           res.status(404).send({error: notExistMessage[req.params.field]})
         } else {
           res.send({message: req.body.favourite ? '已收藏' : '已取消收藏'})
@@ -279,15 +280,26 @@ router.get('/:field(circle|tag|va)s/:id/works',
 // GET list of circles/tags/VAs
 router.get('/:field(circle|tag|va)s/',
   param('field').isIn(['circle', 'tag', 'va']),
-  (req, res, next) => {
+  async (req, res, next) => {
     // In case regex matching goes wrong
     if(!isValidRequest(req, res)) return;
 
     const field = req.params.field;
-    db.getLabels(field)
-      .orderBy(`name`, 'asc')
-      .then(list => res.send(list))
-      .catch(err => next(err));
+    const username = config.auth ? req.user.name : 'admin';
+
+    try {
+      const [list, favourites] = await Promise.all([
+        db.getLabels(field).orderBy(`name`, 'asc'),
+        db.getFavourites(username, field)
+      ]);
+      const favouriteIds = new Set(favourites.map(item => String(item.item_id)));
+      list.forEach(item => {
+        item.favourite = favouriteIds.has(String(item.id)) ? 1 : 0;
+      });
+      res.send(list);
+    } catch (err) {
+      next(err);
+    }
 });
 
 module.exports = router;

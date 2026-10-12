@@ -14,7 +14,6 @@ const createCoreTables = async () => {
     .createTable('t_circle', (table) => {
       table.increments();
       table.string('name').notNullable();
-      table.boolean('favourite').defaultTo(0);
     })
     .createTable('t_work', (table) => {
       table.increments();
@@ -38,12 +37,10 @@ const createCoreTables = async () => {
     .createTable('t_tag', (table) => {
       table.increments();
       table.string('name').notNullable();
-      table.boolean('favourite').defaultTo(0);
     })
     .createTable('t_va', (table) => {
       table.string('id').primary();
       table.string('name').notNullable();
-      table.boolean('favourite').defaultTo(0);
     })
     .createTable('r_tag_work', (table) => {
       table.integer('tag_id').references('id').inTable('t_tag').onUpdate('CASCADE').onDelete('CASCADE');
@@ -70,6 +67,13 @@ const createCoreTables = async () => {
       table.timestamp('updated_at').defaultTo(knex.fn.now());
       table.string('progress');
       table.primary(['user_name', 'work_id']);
+    })
+    .createTable('t_favourite', (table) => {
+      table.string('user_name').notNullable().references('name').inTable('t_user').onDelete('CASCADE');
+      table.string('field').notNullable();
+      table.string('item_id').notNullable();
+      table.timestamp('created_at').defaultTo(knex.fn.now());
+      table.primary(['user_name', 'field', 'item_id']);
     });
   
   console.log(' * 成功构建核心数据库结构.');
