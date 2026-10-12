@@ -1,7 +1,7 @@
 const path = require('path');
 const express = require('express');
 const router = express.Router();
-const { param, query} = require('express-validator');
+const { param, query, body} = require('express-validator');
 const db = require('../database/db');
 const { getTrackList, toTree } = require('../filesystem/utils');
 const { config, getPageSize } = require('../config');
@@ -153,6 +153,35 @@ router.get('/:field(circle|tag|va)s/:id',
             'va': `声优${req.params.id}不存在`
           }
           res.status(404).send({error: errorMessage[req.params.field]})
+        }
+      })
+      .catch(err => next(err));
+});
+
+// PUT favourite flag of a circle/tag/VA
+router.put('/:field(circle|tag|va)s/:id/favourite',
+  param('field').isIn(['circle', 'tag', 'va']),
+  body('favourite').isBoolean(),
+  (req, res, next) => {
+    // In case regex matching goes wrong
+    if(!isValidRequest(req, res)) return;
+
+    const notExistMessage = {
+      'circle': `社团${req.params.id}不存在`,
+      'tag': `标签${req.params.id}不存在`,
+      'va': `声优${req.params.id}不存在`
+    }
+
+    db.setFavourite({
+      field: req.params.field,
+      id: req.params.id,
+      favourite: req.body.favourite
+    })
+      .then(count => {
+        if (count === 0) {
+          res.status(404).send({error: notExistMessage[req.params.field]})
+        } else {
+          res.send({message: req.body.favourite ? '已收藏' : '已取消收藏'})
         }
       })
       .catch(err => next(err));

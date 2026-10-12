@@ -1,7 +1,7 @@
 const fs = require('fs');
 const { md5 } = require('../auth/utils');
 const { databaseExist, createUser } = require('./db');
-const { config, updateConfig } = require('../config');
+const { config } = require('../config');
 const { initDatabase } = require('./schema');
 
 const initApp = async () => {

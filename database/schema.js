@@ -1,6 +1,6 @@
 const { knex } = require('./db');
 
-const dbVersion = '20260117';
+const dbVersion = '20261012';
 
 // 1. 创建核心业务表
 const createCoreTables = async () => {
@@ -14,6 +14,7 @@ const createCoreTables = async () => {
     .createTable('t_circle', (table) => {
       table.increments();
       table.string('name').notNullable();
+      table.boolean('favourite').defaultTo(0);
     })
     .createTable('t_work', (table) => {
       table.increments();
@@ -31,20 +32,22 @@ const createCoreTables = async () => {
       table.text('rate_count_detail');
       table.text('rank');
       table.timestamp('insert_time').defaultTo(knex.fn.now()); // 补全视图中引用的字段
-      table.foreign('circle_id').references('id').inTable('t_circle');
+      table.foreign('circle_id').references('id').inTable('t_circle').onUpdate('CASCADE').onDelete('CASCADE');
       table.index(['circle_id', 'release', 'dl_count', 'review_count', 'price', 'rate_average_2dp'], 't_work_index');
     })
     .createTable('t_tag', (table) => {
       table.increments();
       table.string('name').notNullable();
+      table.boolean('favourite').defaultTo(0);
     })
     .createTable('t_va', (table) => {
       table.string('id').primary();
       table.string('name').notNullable();
+      table.boolean('favourite').defaultTo(0);
     })
     .createTable('r_tag_work', (table) => {
-      table.integer('tag_id').references('id').inTable('t_tag');
-      table.integer('work_id').references('id').inTable('t_work');
+      table.integer('tag_id').references('id').inTable('t_tag').onUpdate('CASCADE').onDelete('CASCADE');
+      table.integer('work_id').references('id').inTable('t_work').onUpdate('CASCADE').onDelete('CASCADE');
       table.primary(['tag_id', 'work_id']);
       table.index(['work_id', 'tag_id'], 'idx_r_tag_work_work_id');
     })
@@ -60,8 +63,8 @@ const createCoreTables = async () => {
       table.string('group').notNullable();
     })
     .createTable('t_review', (table) => {
-      table.string('user_name').references('name').inTable('t_user').onDelete('CASCADE');
-      table.integer('work_id').references('id').inTable('t_work').onDelete('CASCADE');
+      table.string('user_name').references('name').inTable('t_user').onUpdate('CASCADE').onDelete('CASCADE');
+      table.integer('work_id').references('id').inTable('t_work').onUpdate('CASCADE').onDelete('CASCADE');
       table.integer('rating');
       table.string('review_text');
       table.timestamp('updated_at').defaultTo(knex.fn.now());
@@ -78,8 +81,8 @@ const createHistoryTable = async () => {
   if (exists) return;
 
   await knex.schema.createTable('t_history', (table) => {
-      table.integer('work_id').notNullable().references('id').inTable('t_work').onDelete('CASCADE');
-      table.string('user_name').notNullable().references('name').inTable('t_user').onDelete('CASCADE');
+      table.integer('work_id').notNullable().references('id').inTable('t_work').onUpdate('CASCADE').onDelete('CASCADE');
+      table.string('user_name').notNullable().references('name').inTable('t_user').onUpdate('CASCADE').onDelete('CASCADE');
       table.string('file_index').notNullable();
       table.string('file_name');
       table.integer('play_time');

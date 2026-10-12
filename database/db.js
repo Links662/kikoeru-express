@@ -330,13 +330,13 @@ const getLabels = (field) => {
   if (field === 'circle') {
     return knex('t_work')
       .join(`t_${field}`, `${field}_id`, '=', `t_${field}.id`)
-      .select(`t_${field}.id`, 'name')
+      .select(`t_${field}.id`, 'name', `t_${field}.favourite`)
       .groupBy(`${field}_id`)
       .count(`${field}_id as count`);
   } else if (field === 'tag' || field === 'va') {
     return knex(`r_${field}_work`)
       .join(`t_${field}`, `${field}_id`, '=', 'id')
-      .select('id', 'name')
+      .select('id', 'name', `t_${field}.favourite`)
       .groupBy(`${field}_id`)
       .count(`${field}_id as count`);
   }
@@ -474,6 +474,22 @@ const getMetadata = ({field = 'circle', id} = {}) => {
     .first()
 }
 
+/**
+ * 设置社团/标签/声优的收藏状态
+ * @param {Object} options
+ * @param {String} options.field ['circle', 'tag', 'va'] 中的一个
+ * @param {String|Number} options.id 收藏对象的 id
+ * @param {Boolean} options.favourite 是否收藏
+ * @returns {Promise<Number>} 受影响的行数，0 表示对象不存在
+ */
+const setFavourite = ({field = 'circle', id, favourite} = {}) => {
+  const validFields = ['circle', 'tag', 'va'];
+  if (!validFields.includes(field)) throw new Error('无效的查询域');
+  return knex(`t_${field}`)
+    .where('id', '=', id)
+    .update({ favourite: favourite ? 1 : 0 });
+}
+
 // 插入历史数据 - 使用 ON CONFLICT 处理主键冲突
 const insertHistory = (username, work_id, file_index, file_name, play_time, total_time) => 
   knex.transaction(async (trx) => {
@@ -527,7 +543,7 @@ const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) 
 
 module.exports = {
   knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksCount, getWorksByKeyWord, updateWorkMetadata,
-  getLabels, getMetadata,
+  getLabels, getMetadata, setFavourite,
   createUser, updateUserPassword, resetUserPassword, deleteUser,
   getWorksWithReviews, updateUserReview, deleteUserReview,
   insertHistory, getHistoryByWorkId, getHistoryGroupByWorkId,deleteHistoryByUserName,
