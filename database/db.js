@@ -343,6 +343,43 @@ const getLabels = (field) => {
 };
 
 /**
+ * 获取每个社团/标签/声优最近发售的若干作品 id（列表页展示 RJ 号用）
+ * @param {String} field ['circle', 'tag', 'va'] 中的一个
+ * @param {Number} limit 每个条目最多取多少条
+ * @returns {Promise<Map<String, Number[]>>} 键为条目 id（字符串），值为作品 id 数组，按发售日倒序
+ */
+const getRecentWorkIds = async (field = 'circle', limit = 10) => {
+  const validFields = ['circle', 'tag', 'va'];
+  if (!validFields.includes(field)) throw new Error('无效的查询域');
+
+  // 社团直接挂在 t_work 上，标签/声优需要走关系表
+  const itemColumn = field === 'circle' ? 'w.circle_id' : `r.${field}_id`;
+  const workSource = field === 'circle'
+    ? 't_work w'
+    : `t_work w JOIN r_${field}_work r ON r.work_id = w.id`;
+
+  const rows = await knex.raw(`
+    WITH ranked AS (
+      SELECT ${itemColumn} AS item_id, w.id AS work_id,
+             ROW_NUMBER() OVER (PARTITION BY ${itemColumn} ORDER BY w.release DESC, w.id DESC) AS rn
+      FROM ${workSource}
+    )
+    SELECT item_id, work_id
+    FROM ranked
+    WHERE rn <= ?
+    ORDER BY item_id, rn
+  `, [limit]);
+
+  const result = new Map();
+  for (const row of rows) {
+    const key = String(row.item_id);
+    if (result.has(key) === false) result.set(key, []);
+    result.get(key).push(row.work_id);
+  }
+  return result;
+};
+
+/**
  * 创建一个新用户
  * @param {Object} user User object.
  */
@@ -576,6 +613,7 @@ const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) 
 module.exports = {
   knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksCount, getWorksByKeyWord, updateWorkMetadata,
   getLabels, getMetadata, getFavourites, setFavourite,
+  getRecentWorkIds,
   createUser, updateUserPassword, resetUserPassword, deleteUser,
   getWorksWithReviews, updateUserReview, deleteUserReview,
   insertHistory, getHistoryByWorkId, getHistoryGroupByWorkId,deleteHistoryByUserName,

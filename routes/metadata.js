@@ -288,13 +288,16 @@ router.get('/:field(circle|tag|va)s/',
     const username = config.auth ? req.user.name : 'admin';
 
     try {
-      const [list, favourites] = await Promise.all([
+      const [list, favourites, recentWorks] = await Promise.all([
         db.getLabels(field).orderBy(`name`, 'asc'),
-        db.getFavourites(username, field)
+        db.getFavourites(username, field),
+        db.getRecentWorkIds(field, 10)
       ]);
       const favouriteIds = new Set(favourites.map(item => String(item.item_id)));
       list.forEach(item => {
         item.favourite = favouriteIds.has(String(item.id)) ? 1 : 0;
+        // 列表页展示最近发售的 RJ 号
+        item.recentWorks = recentWorks.get(String(item.id)) || [];
       });
       res.send(list);
     } catch (err) {
