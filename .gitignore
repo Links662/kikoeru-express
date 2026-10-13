@@ -109,10 +109,6 @@ dist
 # Windows Batch
 /*.bat
 
-# Package
-package
-package-macos
-
 # Config
 config
 

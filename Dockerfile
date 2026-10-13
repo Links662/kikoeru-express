@@ -6,7 +6,7 @@
 # npm 镜像源：默认走国内 npmmirror，需要用官方源时加 --build-arg NPM_REGISTRY=https://registry.npmjs.org
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 
-FROM node:14-alpine AS build-dep
+FROM node:22-alpine AS build-dep
 
 # Create app directory
 WORKDIR /usr/src/kikoeru
@@ -20,17 +20,15 @@ RUN apk update && apk add python3 make gcc g++
 ARG NPM_REGISTRY
 RUN npm config set registry ${NPM_REGISTRY}
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Build SPA and PWA
-FROM node:14-alpine AS build-frontend
+FROM node:22-alpine AS build-frontend
 WORKDIR /frontend
-# @quasar/app v1 requires node-ass, which takes 30 minutes to compile libsass in CI for arm64 and armv7
-# So I prebuilt the binaries for arm64 and armv7
-# @quasar/app v2 no longer uses this deprecated package, so this line will be removed in the future
+# Quasar v2 uses dart-sass, so the old node-sass / libsass workaround is gone.
 ARG NPM_REGISTRY
 RUN npm config set registry ${NPM_REGISTRY}
-RUN npm install -g @quasar/cli@1.2.0
+# Quasar CLI now comes from the project's own @quasar/app-webpack dependency.
 
 # 先只复制 package 文件以利用缓存
 COPY ./kikoeru-quasar/package*.json ./
@@ -38,10 +36,10 @@ RUN npm ci
 
 # 再复制源代码进行构建
 COPY ./kikoeru-quasar .
-RUN quasar build && quasar build -m pwa
+RUN npx quasar build && npx quasar build -m pwa
 
 # Final stage
-FROM node:14-alpine
+FROM node:22-alpine
 ENV IS_DOCKER=true
 WORKDIR /usr/src/kikoeru
 

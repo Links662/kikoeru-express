@@ -2,10 +2,6 @@
 .git
 **/.git
 
-# Package
-package/*
-package-macos/*
-
 # Config
 config/*
 

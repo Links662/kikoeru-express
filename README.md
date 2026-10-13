@@ -70,7 +70,6 @@ docker compose up -d
 - lrc-file-parser (解析播放LRC歌词文件)
 - jschardet (判断文本文件编码)
 - child_process (nodejs 子进程)
-- pkg (打包为可执行文件)
 
 
 ## 项目目录结构
@@ -81,8 +80,6 @@ docker compose up -d
 ├── database/                # 操作数据库相关代码
 ├── dist/                    # 存放前端项目 kikoeru-quasar 构建的 PWA
 ├── filesystem/              # 存放扫描相关代码
-├── package/                 # 存放 pkg 打包后的可执行文件
-├── package-macos/           # 存放 pkg 打包后的可执行文件
 ├── scraper/                 # 存放爬虫相关代码
 ├── sqlite/                  # 存放 sqlite 数据库文件
 ├── static/                  # 存放静态资源
