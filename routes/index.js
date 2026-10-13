@@ -18,6 +18,7 @@ router.use('/config', require('./config'));
 router.use('/media', require('./media'));
 router.use('/review', require('./review'));
 router.use('/history', require('./history'));
+router.use('/scanner', require('./scanner'));
 // Other routes
 router.use('/', require('./metadata'));
 

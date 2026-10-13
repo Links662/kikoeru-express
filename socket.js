@@ -1,9 +1,8 @@
-const path = require('path');
 const socket = require('socket.io');
 const jwtAuth = require('socketio-jwt-auth'); // 用于 JWT 验证的 socket.io 中间件
-const child_process = require('child_process'); // 子进程
 const { config } = require('./config');
 const {getWorksCount} = require('./database/db');
+const scannerState = require('./scannerState');
 
 const initSocket = (server) => {
   const io = socket(server);
@@ -24,7 +23,11 @@ const initSocket = (server) => {
     }));
   }
 
-  let scanner = null;
+  // 扫描子进程的事件由 scannerState 统一发布，这里只负责广播给所有客户端。
+  // http / https 两个 io 实例会各注册一次，共享同一个扫描进程状态。
+  scannerState.onEvent((event, payload) => {
+    io.emit(event, payload);
+  });
 
   // 有新的客户端连接时触发
   io.on('connection', function (socket) {
@@ -40,54 +43,21 @@ const initSocket = (server) => {
     // });
     
     socket.on('ON_SCANNER_PAGE', () => {
-      if (scanner) {
-        // 防止用户在扫描过程中刷新页面
-        scanner.send({
-          emit: 'SCAN_INIT_STATE'
-        });
-      }
+      // 防止用户在扫描过程中刷新页面
+      scannerState.requestInitState();
     });
 
     socket.on('PERFORM_SCAN', () => {
-      if (!scanner) {
-        scanner = child_process.fork(path.join(__dirname, './filesystem/scanner.js'), { silent: false }); // 子进程
-        scanner.on('exit', (code) => {
-          scanner = null;
-          if (code) {
-            io.emit('SCAN_ERROR');
-          }
-        });
-        
-        scanner.on('message', (m) => {
-          if (m.event) {
-            io.emit(m.event, m.payload);
-          }
-        });
-      }   
+      scannerState.startScan('scan');
     });
 
     socket.on('PERFORM_UPDATE', () => {
-      if (!scanner) {
-        scanner = child_process.fork(path.join(__dirname, './filesystem/updater.js'), ['--refreshAll'], { silent: false }); // 子进程
-        scanner.on('exit', (code) => {
-          scanner = null;
-          if (code) {
-            io.emit('SCAN_ERROR');
-          }
-        });
-        
-        scanner.on('message', (m) => {
-          if (m.event) {
-            io.emit(m.event, m.payload);
-          }
-        });
-      }   
+      scannerState.startScan('update');
     });
 
     socket.on('KILL_SCAN_PROCESS', () => {
-      scanner.send({
-        exit: 1
-      });
+      // 没有扫描在跑时安全忽略：原先这里会对 null 调 send()，直接把服务端打崩
+      scannerState.killScan();
     });
 
     // 发生错误时触发
