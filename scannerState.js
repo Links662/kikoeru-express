@@ -1,5 +1,5 @@
 const path = require('path');
-const child_process = require('child_process'); // 子进程
+const child_process = require('child_process');
 
 /**
  * 扫描进程的唯一状态源。

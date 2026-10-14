@@ -2,14 +2,13 @@ const path = require('path')
 const { config } = require('../config')
 
 module.exports = {
-  // Default environment
   development: {
-    client: 'sqlite3', // 数据库类型
+    client: 'sqlite3',
     useNullAsDefault: true,
-    connection: { // 连接参数
+    connection: {
       filename: path.join(config.databaseFolderDir, 'db.sqlite3'),
     },
-    acquireConnectionTimeout: 40000, // 连接计时器
+    acquireConnectionTimeout: 40000,
     pool: {
       afterCreate: (conn, done) => {
         conn.run('PRAGMA foreign_keys = ON;', function (err) {

@@ -1,6 +1,5 @@
 const strftime  = require('./strftime')
 
-// Normalize API endpoints
 const normalize = (works, options = {}) => {
   works.map(record => {
     record.nsfw = Boolean(record.nsfw);

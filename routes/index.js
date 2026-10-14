@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 
-// Health check endpoint
 router.get('/health', (req, res) => {
   res.send('OK');
 })
@@ -19,7 +18,6 @@ router.use('/media', require('./media'));
 router.use('/review', require('./review'));
 router.use('/history', require('./history'));
 router.use('/scanner', require('./scanner'));
-// Other routes
 router.use('/', require('./metadata'));
 
 module.exports = router;

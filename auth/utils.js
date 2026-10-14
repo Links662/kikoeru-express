@@ -23,8 +23,6 @@ const signToken = (user) => {
 
 const cmd5 = (str) => md5(str + config.md5secret);
 
-
-
 module.exports = {
   signToken,
   md5: cmd5,

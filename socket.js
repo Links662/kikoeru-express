@@ -1,26 +1,49 @@
 const socket = require('socket.io');
-const jwtAuth = require('socketio-jwt-auth'); // 用于 JWT 验证的 socket.io 中间件
+const jwt = require('jsonwebtoken');
 const { config } = require('./config');
 const {getWorksCount} = require('./database/db');
 const scannerState = require('./scannerState');
 
+// socket.io v4 默认不再自动放行跨域握手（v2 时代是放开的）。这里保持等价行为：
+// 生产环境前后端同源部署不受影响，开发时前端跑在别的端口需要它。
+const SOCKET_OPTIONS = { cors: { origin: true } };
+
 const initSocket = (server) => {
-  const io = socket(server);
+  const io = socket(server, SOCKET_OPTIONS);
   if (config.auth) {
-    io.use(jwtAuth.authenticate({
-      secret: config.jwtsecret
-    }, (payload, done) => {
+    // 原来的 socketio-jwt-auth 只支持 socket.io v2，这里按它的行为重写：
+    // 依次从 x-auth-token 头、query.auth_token、handshake.auth.auth_token 里取 token，
+    // 校验签名和有效期（HS256），非 administrator 账号一律拒绝连接。
+    io.use((client, next) => {
+      const handshake = client.handshake;
+      const token =
+        handshake.headers['x-auth-token'] ||
+        (handshake.query && handshake.query.auth_token) ||
+        (handshake.auth && handshake.auth.auth_token);
+
+      if (!token) return next(new Error('No auth token'));
+
+      let payload;
+      try {
+        payload = jwt.verify(token, config.jwtsecret, { algorithms: ['HS256'] });
+      } catch (err) {
+        return next(new Error(err.message));
+      }
+
       const user = {
         name: payload.name,
         group: payload.group
       };
 
-      if (user.group === 'administrator') {
-        done(null, user);
-      } else {
-        done(null, false, '只有 administrator 账号能登录管理后台.');
+      if (user.group !== 'administrator') {
+        // 客户端靠消息里是否含 'administrator' 判断要跳登录页，措辞保持原样
+        return next(new Error('只有 administrator 账号能登录管理后台.'));
       }
-    }));
+
+      user.logged_in = true;
+      client.request.user = user;
+      return next();
+    });
   }
 
   // 扫描子进程的事件由 scannerState 统一发布，这里只负责广播给所有客户端。
@@ -29,19 +52,13 @@ const initSocket = (server) => {
     io.emit(event, payload);
   });
 
-  // 有新的客户端连接时触发
   io.on('connection', function (socket) {
-    // console.log('connection');
     socket.emit('success', {
       message: '成功登录管理后台.',
       user: socket.request.user,
       auth: config.auth
     });
 
-    // socket.on('disconnect', () => {
-    //   console.log('disconnect');
-    // });
-    
     socket.on('ON_SCANNER_PAGE', () => {
       // 防止用户在扫描过程中刷新页面
       scannerState.requestInitState();
@@ -60,7 +77,6 @@ const initSocket = (server) => {
       scannerState.killScan();
     });
 
-    // 发生错误时触发
     socket.on('error', (err) => {
       console.error(err);
     });

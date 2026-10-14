@@ -90,7 +90,6 @@ const setConfig = (newConfig, writeConfigToFile = !process.env.FREEZE_CONFIG_FIL
   }
 }
 
-// Get or use default value
 const readConfig = () => {
   config = JSON.parse(fs.readFileSync(configPath));
   for (let key in defaultConfig) {
@@ -126,7 +125,6 @@ const readConfig = () => {
   }
 };
 
-// Migrate config
 const updateConfig = (writeConfigToFile = !process.env.FREEZE_CONFIG_FILE) => {
   let cfg = JSON.parse(fs.readFileSync(configPath));
   let countChanged = 0;

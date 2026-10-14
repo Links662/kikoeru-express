@@ -1,6 +1,6 @@
-const cheerio = require('cheerio'); // 解析器
+const cheerio = require('cheerio');
 
-const axios = require('./axios'); // 数据请求
+const axios = require('./axios');
 const { nameToUUID, hasLetter } = require('./utils');
 const scrapeWorkMetadataFromHVDB = require('./hvdb');
 
@@ -48,11 +48,10 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
 
   axios.retryGet(url, {
     retry: {},
-    headers: { "cookie": COOKIE_LOCALE } // 自定义请求头
+    headers: { "cookie": COOKIE_LOCALE }
   })
     .then(response => response.data)
-    .then((data) => { // 解析
-      // 转换成 jQuery 对象
+    .then((data) => {
       const $ = cheerio.load(data);
 
       // 标题
@@ -143,7 +142,6 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
         scrapeWorkMetadataFromHVDB(id)
           .then((metadata) => {
             if (metadata.vas.length <= 1) {
-              // N/A
               work.vas = metadata.vas;
             } else {
               // 过滤掉英文的声优名
@@ -178,7 +176,6 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
  * @param {number} id Work id.
  */
 const scrapeDynamicWorkMetadataFromDLsite = id => new Promise((resolve, reject) => {
-  //const rjcode = (`000000${id}`).slice(-6);
   let rjcode ;
   if (id>=1000000) {
     rjcode = (`00000000${id}`).slice(-8);

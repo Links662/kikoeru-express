@@ -6,8 +6,6 @@ const { query, body } = require('express-validator');
 const { isValidRequest } = require('./utils/validate')
 
 
-// 历史记录插入和获取的简单实现
-// Post add a play history
 router.put('/', 
   body('work_id').isInt(),
   body('file_index').isInt(),
@@ -17,7 +15,6 @@ router.put('/',
   (req, res) => {
     if(!isValidRequest(req, res)) return;
 
-    // 插入历史记录
     const username = config.auth ? req.user.name : 'admin';
 
     db.insertHistory(username, req.body.work_id, req.body.file_index, req.body.file_name, parseInt(req.body.play_time), parseInt(req.body.total_time))

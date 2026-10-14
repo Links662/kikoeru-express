@@ -13,7 +13,6 @@ const { config } = require('../config');
  */
 const getTrackList = (id, dir) => recursiveReaddir(dir)
   .then((files) => {
-    // Filter out any files not matching these extensions
     const filteredFiles = files.filter((file) => {
       const ext = path.extname(file).toLowerCase();
 
@@ -24,7 +23,6 @@ const getTrackList = (id, dir) => recursiveReaddir(dir)
         || ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.webp');
     });
 
-    // Sort by folder and title
     const sortedFiles = orderBy(filteredFiles.map((file) => {
       const shortFilePath = file.replace(path.join(dir, '/'), '');
       const dirName = path.dirname(shortFilePath);
@@ -36,7 +34,6 @@ const getTrackList = (id, dir) => recursiveReaddir(dir)
       };
     }), [v => v.subtitle, v => v.title, v => v.ext]);
 
-    // Add hash to each file
     const sortedHashedFiles = sortedFiles.map(
       (file, index) => ({
         title: file.title,
@@ -148,8 +145,7 @@ const toTree = (tracks, workDir, rootFolder) => {
  * 音声文件夹对象 { relativePath: '相对路径', rootFolderName: '根文件夹别名', id: '音声ID' }
  * @param {Object} rootFolder 根文件夹对象 { name: '别名', path: '绝对路径' }
  */
-async function* getFolderList(rootFolder, current = '', depth = 0, callback = function addMainLog(){} ) { // 异步生成器函数 async function*() {}
-  // 浅层遍历
+async function* getFolderList(rootFolder, current = '', depth = 0, callback = function addMainLog(){} ) {
   const folders = await fs.promises.readdir(path.join(rootFolder.path, current));    
 
   for (const folder of folders) {
@@ -158,13 +154,12 @@ async function* getFolderList(rootFolder, current = '', depth = 0, callback = fu
 
     try {
     // eslint-disable-next-line no-await-in-loop
-      if ((await fs.promises.stat(absolutePath)).isDirectory()) { // 检查是否为文件夹
-          if (folder.match(/RJ\d+/)) { // 检查文件夹名称中是否含有RJ号
+      if ((await fs.promises.stat(absolutePath)).isDirectory()) {
+          if (folder.match(/RJ\d+/)) {
             // Found a work folder, don't go any deeper.
             yield { absolutePath, relativePath, rootFolderName: rootFolder.name, id: parseInt(folder.match(/RJ(\d+)/)[1]) };
           } else if (depth + 1 < config.scannerMaxRecursionDepth) {
             // 若文件夹名称中不含有RJ号，就进入该文件夹内部
-            // Found a folder that's not a work folder, go inside if allowed.
             yield* getFolderList(rootFolder, relativePath, depth + 1);
           }
         }

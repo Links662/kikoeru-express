@@ -1,12 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { check, validationResult } = require('express-validator'); // 后端校验
+const { check, validationResult } = require('express-validator');
 const { md5 } = require('../auth/utils');
 const { config} = require('../config');
 const db = require('../database/db');
 
 
-// 创建一个新用户 (只有 admin 账号拥有权限)
 router.post('/user', [
   check('name')
     .isLength({ min: 5 })
@@ -22,7 +21,6 @@ router.post('/user', [
       return true
     })
 ], (req, res, next) => {
-  // Finds the validation errors in this request and wraps them in an object with handy functions
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(422).send({ errors: errors.array() });
@@ -53,7 +51,6 @@ router.post('/user', [
   }
 });
 
-// 更新用户密码
 router.put('/user', [
   check('name')
     .isLength({ min: 5 })
@@ -62,7 +59,6 @@ router.put('/user', [
     .isLength({ min: 5 })
     .withMessage('密码长度至少为 5')
 ], (req, res, next) => {
-  // Finds the validation errors in this request and wraps them in an object with handy functions
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(422).json({errors: errors.array()});
@@ -88,7 +84,6 @@ router.put('/user', [
   }
 });
 
-// 删除用户 (仅 admin 账号拥有权限)
 router.delete('/user', (req, res, next) => {
   const users = req.body.users
 
@@ -109,7 +104,6 @@ router.delete('/user', (req, res, next) => {
   }
 });
 
-// 获取所有用户
 router.get('/users', (req, res, next) => {
   if (!config.auth || req.user.group === 'administrator') {
     db.knex('t_user')

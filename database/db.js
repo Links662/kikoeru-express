@@ -4,7 +4,6 @@ const { config } = require('../config');
 
 const databaseExist = fs.existsSync(path.join(config.databaseFolderDir, 'db.sqlite3'));
 
-// knex 操作数据库
 const connEnv = 'development';
 const conn = require('./knexfile')[connEnv]
 const knex = require('knex')(conn);
@@ -15,7 +14,6 @@ let cachedTotalCount = null;
  * Takes a work metadata object and inserts it into the database.
  * @param {Object} work Work object.
  */
-// Using trx as a query builder:
 const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
   trx('t_circle')
     .insert({
@@ -44,7 +42,6 @@ const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
       insert_time: knex.fn.now()
     }))
   .then(() => {
-    // Now that work is in the database, insert relationships
     const promises = [];
 
     for (let i = 0; i < work.tags.length; i += 1) {
@@ -144,8 +141,6 @@ const updateWorkMetadata = (work, options = {}) => knex.transaction(async (trx) 
  */
 const getWorkMetadata = async (id, username) => {
   // TODO: do this all in a single transaction?
-  // <= Yes, WTF is this
-  // I think we are done.
 
     const ratingSubQuery = knex('t_review')
     .select(['t_review.work_id', 't_review.rating AS userRating', 't_review.review_text', 't_review.progress', knex.raw('strftime(\'%Y-%m-%d %H:%M:%S\', t_review.updated_at, \'localtime\') AS updated_at'), 't_review.user_name'])
@@ -233,7 +228,6 @@ const cleanupOrphans = async (trxProvider, circle, tags, vas)  => {
  */
 const removeWork = async (id, trxProvider) => {
   const trx = await trxProvider();
-  // Save circle, tags and VAs to array for later testing
     const circle = await trx('t_work').select('circle_id').where('id', '=', id).first();
     const tags = await trx('r_tag_work').select('tag_id').where('work_id', '=', id);
     const vas = await trx('r_va_work').select('va_id').where('work_id', '=', id);
@@ -440,9 +434,7 @@ const deleteUser = users => knex.transaction(trx => trx('t_user')
   .del());
 
 
-// 添加星标或评语或进度
 const updateUserReview = async (username, workid, rating, review_text = '', progress = '', starOnly = true, progressOnly= false) => knex.transaction(async(trx) => {
-    //UPSERT
     if (starOnly) {
       await trx.raw('UPDATE t_review SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE user_name = ? AND work_id = ?;', [rating, username, workid]);
       await trx.raw('INSERT OR IGNORE INTO t_review (user_name, work_id, rating) VALUES (?, ?, ?);', [username, workid, rating]);
@@ -455,13 +447,11 @@ const updateUserReview = async (username, workid, rating, review_text = '', prog
     }
 });
 
-// 删除星标、评语及进度
 const deleteUserReview = (username, workid) => knex.transaction(trx => trx('t_review')
   .where('user_name', '=', username)
   .andWhere('work_id', '=', workid)
   .del());
 
-// 读取星标及评语 + 作品元数据
 const getWorksWithReviews = async ({username = '', limit = 1000, offset = 0, orderBy = 'release', sortOption = 'desc', filter} = {}) => {
   let works = [];
   const ratingSubQuery = knex('t_review')
@@ -559,7 +549,6 @@ const setFavourite = async ({username, field = 'circle', id, favourite} = {}) =>
   return true;
 }
 
-// 插入历史数据 - 使用 ON CONFLICT 处理主键冲突
 const insertHistory = (username, work_id, file_index, file_name, play_time, total_time) => 
   knex.transaction(async (trx) => {
     await trx.raw(`
@@ -575,7 +564,6 @@ const insertHistory = (username, work_id, file_index, file_name, play_time, tota
     `, [username, work_id, file_index, file_name, play_time, total_time]);
   });
 
-// 读取某用户 work_id 的历史数据
 const getHistoryByWorkId = async (username, work_id, file_index) => {
   return knex('t_history')
     .select([
@@ -595,7 +583,6 @@ const getHistoryByWorkId = async (username, work_id, file_index) => {
     .first(); // 因为主键唯一，所以一定只有一条记录
 }
 
-// GROUP BY work_id 读取每个作品的最后一条历史记录
 const getHistoryGroupByWorkId = async (username, limit = 100) => {
   return knex('t_history')
     .select('*')
@@ -604,7 +591,6 @@ const getHistoryGroupByWorkId = async (username, limit = 100) => {
     .limit(limit);
 }
 
-// 删除一个用户所有历史记录
 const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) => {
   await trx.raw(`DELETE FROM t_history WHERE user_name = ?`, [username])
   return

@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const Jimp = require('jimp');
-const LimitPromise = require('limit-promise'); // 限制并发数量
+const LimitPromise = require('limit-promise');
 
-const axios = require('../scraper/axios.js'); // 数据请求
+const axios = require('../scraper/axios.js');
 const { scrapeWorkMetadataFromDLsite, scrapeDynamicWorkMetadataFromDLsite } = require('../scraper/dlsite');
 const db = require('../database/db');
 const { getFolderList, deleteCoverImageFromDisk, saveCoverImageToDisk, getTrackList } = require('./utils');
@@ -150,7 +150,6 @@ const uniqueArr = (arr) => {
  * @param {string} tagLanguage 标签语言，'ja-jp', 'zh-tw' or 'zh-cn'，默认'zh-cn'
  */
 const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
-  //const rjcode = (`000000${id}`).slice(-6); // zero-pad to 6 digits
   let rjcode ;
   if (id>=1000000) {
     rjcode = (`00000000${id}`).slice(-8);
@@ -159,7 +158,7 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
   }
   emitTaskLog(`[RJ${rjcode}] 从 DLSite 抓取元数据...`, rjcode);
   
-  return scrapeWorkMetadataFromDLsite(id, tagLanguage) // 抓取该音声的元数据
+  return scrapeWorkMetadataFromDLsite(id, tagLanguage)
     .then((metadata) => {
       const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === rootFolderName);
       const absolutePath = path.join(rootFolder.path, dir);
@@ -182,7 +181,6 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
       })
     })
     .then((metadata) => {
-      // 将抓取到的元数据插入到数据库
       emitTaskLog(`[RJ${rjcode}] 元数据抓取成功，准备添加到数据库...`, rjcode);
       
       metadata.rootFolderName = rootFolderName;
@@ -252,7 +250,6 @@ const getCoverImage = async (id, types) => {
     }
   }
 
-  // 检查结果
   if (results.includes('failed')) {
     return 'failed';
   }
@@ -339,8 +336,8 @@ const processFolder = async (folder) => {
   }
 };
 
-const MAX = config.maxParallelism; // 并发请求上限
-const limitP = new LimitPromise(MAX); // 核心控制器
+const MAX = config.maxParallelism;
+const limitP = new LimitPromise(MAX);
 /**
  * 限制 processFolder 并发数量，
  * 使用控制器包装 processFolder 方法，实际上是将请求函数递交给控制器处理
@@ -360,9 +357,8 @@ const performCleanup = async () => {
     // 检查每个音声的根文件夹或本地路径是否仍然存在
     const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder);
     if (!rootFolder || !fs.existsSync(path.join(rootFolder.path, work.dir))) {
-      db.removeWork(work.id, trxProvider) // 将其数据项从数据库中移除
-        .then((result) => { // 然后删除其封面图片
-          //const rjcode = (`000000${work.id}`).slice(-6); // zero-pad to 6 digits
+      db.removeWork(work.id, trxProvider)
+        .then((result) => {
           let rjcode ;
           if (work.id>=1000000) {
             rjcode = (`00000000${work.id}`).slice(-8);
@@ -419,7 +415,6 @@ const handleDeduplication = (folderList, counts) => {
     Object.keys(duplicate).forEach(key => {
       const rjcode = formatRJCode(key);
       emitMainLog(` -> [RJ${rjcode}] 存在多个文件夹.`, 'info', 4);
-      // 这里可以继续遍历打印 duplicate[key] 的路径...
     });
   }
   return { uniqueFolderList: uniqueList, duplicateNum };
@@ -429,7 +424,7 @@ const processSingleFolder = async (folder, counts) => {
   const result = await processFolderLimited(folder);
   const rjcode = formatRJCode(folder.id);
 
-  counts[result]++; // 更新计数器
+  counts[result]++;
 
   if (result === 'added' || result === 'failed') {
     const isSuccess = result === 'added';
@@ -438,7 +433,6 @@ const processSingleFolder = async (folder, counts) => {
 
     console[isSuccess ? 'log' : 'error'](`[RJ${rjcode}] ${statusText}! ${result.toUpperCase()}: ${counts[result]}`);
 
-    // 更新任务状态
     const task = tasks.find(t => t.rjcode === rjcode);
     if (task) task.result = result;
 
@@ -509,17 +503,15 @@ const performScan = async () => {
 const updateMetadata = (id, options = {}) => {
   let scrapeProcessor = () => scrapeWorkMetadataFromDLsite(id, config.tagLanguage);
 
-  //const rjcode = (`000000${id}`).slice(-6); // zero-pad to 6 digits
   let rjcode ;
   if (id>=1000000) {
     rjcode = (`00000000${id}`).slice(-8);
   } else {
     rjcode = (`000000${id}`).slice(-6);
   }
-  addTask(rjcode); // addTask only accepts a string
-  return scrapeProcessor() // 抓取该音声的元数据
+  addTask(rjcode);
+  return scrapeProcessor()
     .then((metadata) => {
-      // 将抓取到的元数据插入到数据库
       emitTaskLog(`[RJ${rjcode}] 元数据抓取成功，准备更新元数据...`, rjcode);
       metadata.id = id;
       return db.updateWorkMetadata(metadata, options)
@@ -574,7 +566,6 @@ const refreshWorks = async (query, idColumnName, processor) => {
 
     const promises = works.map((work) => {
       const workid = work[idColumnName];
-      //const rjcode = (`000000${workid}`).slice(-6);
       let rjcode ;
       if (workid>=1000000) {
         rjcode = (`00000000${workid}`).slice(-8);
@@ -582,7 +573,7 @@ const refreshWorks = async (query, idColumnName, processor) => {
         rjcode = (`000000${workid}`).slice(-6);
       }
       return processor(workid)
-        .then((result) => { // 统计处理结果
+        .then((result) => {
           result === 'failed' ? counts['failed'] += 1 : counts['updated'] += 1;
           tasks.find(task => task.rjcode === rjcode).result = result;
           removeTask(rjcode);

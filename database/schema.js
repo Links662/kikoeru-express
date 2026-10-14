@@ -2,7 +2,6 @@ const { knex } = require('./db');
 
 const dbVersion = '20261012';
 
-// 1. 创建核心业务表
 const createCoreTables = async () => {
   const exists = await knex.schema.hasTable('t_circle');
   if (exists) {
@@ -79,7 +78,6 @@ const createCoreTables = async () => {
   console.log(' * 成功构建核心数据库结构.');
 };
 
-// 2. 创建历史记录表
 const createHistoryTable = async () => {
   const exists = await knex.schema.hasTable('t_history');
   if (exists) return;
@@ -93,13 +91,11 @@ const createHistoryTable = async () => {
       table.integer('total_time');
       table.timestamps(true, true);
       
-      // 设置联合主键
       table.primary(['work_id', 'user_name']);
   });
   console.log(' * 成功构建历史记录表.');
 };
 
-// 3. 创建/更新视图
 const createView = async () => {
   await knex.raw('DROP VIEW IF EXISTS staticMetadata');
 
@@ -128,7 +124,6 @@ const createView = async () => {
   console.log(' * 视图 staticMetadata 已同步.');
 };
 
-// 4. 总初始化入口
 const initDatabase = async () => {
   try {
     console.log(`--- 开始初始化数据库 v${dbVersion} ---`);

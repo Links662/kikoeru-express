@@ -1,6 +1,6 @@
-const htmlparser = require('htmlparser2'); // 解析器
+const htmlparser = require('htmlparser2');
 
-const axios = require('./axios'); // 数据请求
+const axios = require('./axios');
 const { nameToUUID } = require('./utils');
 
 /**
@@ -8,7 +8,6 @@ const { nameToUUID } = require('./utils');
  * @param {number} id Work id.
  */
 const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
-  //const rjcode = (`000000${id}`).slice(-6);
   let rjcode ;
   if (id>=1000000) {
     rjcode = (`00000000${id}`).slice(-8);
@@ -23,12 +22,12 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
       console.log('res HVDB')
       return response.data
     })
-    .then((data) => { //解析
+    .then((data) => {
       const work = { id, tags: [], vas: [] };
       let writeTo;
 
       const parser = new htmlparser.Parser({
-        onopentag: (name, attrs) => { // 标签名 属性
+        onopentag: (name, attrs) => {
           if (name === 'input') {
             if (attrs.id === 'Name') {
               work.title = attrs.value;
@@ -49,17 +48,15 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
               });
               writeTo = 'tag.name';
             } else if (attrs.href.indexOf('CVWorks') !== -1) {
-              work.vas.push({
-                //id: hashNameIntoInt(attrs.href), // TODO: RESHNIX!!!
-              });
+              work.vas.push({});
               writeTo = 'va.name';
-              currentVaName = ''; // 重置临时存储
+              currentVaName = '';
             }
           }
         },
         onclosetag: (name) => {
           if (name === 'a' && writeTo === 'va.name') {
-            work.vas[work.vas.length - 1].name = currentVaName.trim(); // 存入完整名字
+            work.vas[work.vas.length - 1].name = currentVaName.trim();
             work.vas[work.vas.length - 1].id = nameToUUID(currentVaName.trim());
             writeTo = null;
           }
@@ -73,7 +70,7 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
               work.tags[work.tags.length - 1].name = text;
               break;
             case 'va.name':
-              currentVaName += text; // 累积文本
+              currentVaName += text;
               break;
             default:
           }

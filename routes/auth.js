@@ -1,6 +1,9 @@
 const express = require('express');
-const { check, validationResult } = require('express-validator'); // 后端校验
-const expressJwt = require('express-jwt'); // 把 JWT 的 payload 部分赋值于 req.user
+const { check, validationResult } = require('express-validator');
+const expressJwtModule = require('express-jwt');
+
+// express-jwt 7 起改为命名导出（6.x 是直接导出函数），这里两种形态都兼容
+const expressJwt = expressJwtModule.expressjwt || expressJwtModule;
 
 const { signToken, md5 } = require('../auth/utils');
 const db = require('../database/db');
@@ -19,7 +22,6 @@ router.post('/me', [
     .withMessage('密码长度至少为 5')
 // eslint-disable-next-line no-unused-vars
 ], (req, res, next) => {
-  // Finds the validation errors in this request and wraps them in an object with handy functions
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(422).send({ errors: errors.array() });
@@ -44,15 +46,14 @@ router.post('/me', [
     .catch((err) => {
       console.error(err);
       res.status(500).send({error: '服务器错误'});
-      // next(err);
     });
 });
 
 if (config.auth) {
-  router.get('/me', expressJwt({ secret: config.jwtsecret, algorithms: ['HS256'] }));
+  // requestProperty 说明见 api.js：express-jwt 7+ 默认写 req.auth，这里保持 req.user
+  router.get('/me', expressJwt({ secret: config.jwtsecret, algorithms: ['HS256'], requestProperty: 'user' }));
 }
 
-// 获取用户信息
 // eslint-disable-next-line no-unused-vars
 router.get('/me', (req, res, next) => {
   // 同时告诉客户端，服务器是否启用用户验证

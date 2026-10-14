@@ -17,7 +17,6 @@ const filterConfig = (_config, option = 'read') => {
   return configClone;
 }
 
-// 修改配置文件
 router.put('/admin', (req, res, next) => {
   if (!config.auth || req.user.group === 'administrator') {
     try {
@@ -32,7 +31,6 @@ router.put('/admin', (req, res, next) => {
   }
 });
 
-// 获取配置文件
 router.get('/admin', (req, res, next) => {
   if (!config.auth || req.user.group === 'administrator') {
     try {

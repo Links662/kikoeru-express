@@ -5,7 +5,7 @@ const path = require('path');
 const express = require('express');
 
 const compression = require('compression');
-const bodyParser = require('body-parser'); // 获取 req.body
+const bodyParser = require('body-parser');
 const history = require('connect-history-api-fallback');
 const http = require('http');
 const https = require('https');
@@ -26,9 +26,7 @@ const { config } = require('./config');
 const api = require('./api');
 const app = express();
 
-// Initialize database if not exists 
-// Init or migrate database and config
-// Note: non-blocking
+// 初始化或迁移数据库与配置（非阻塞）
 initApp().catch(err => console.error(err));
 
 if (config.behindProxy) {
@@ -43,9 +41,7 @@ if (config.enableGzip) {
   app.use(compression());
 }
 
-// parse application/x-www-form-urlencoded
 app.use(bodyParser.urlencoded({ extended: true }));
-// parse application/json
 app.use(bodyParser.json());
 
 // For dev purpose only
@@ -72,11 +68,9 @@ api(app);
 // Serve WebApp routes
 app.use(express.static(path.join(__dirname, './dist')));
 
-// 返回错误响应
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   if (err.name === 'UnauthorizedError') { 
-    // 验证错误
     res.set("WWW-Authenticate", "Bearer realm=\"Authorization Required\"");
     res.status(401).send({ error: err.message });
   } else if (err.code === 'SQLITE_ERROR') {

@@ -10,7 +10,6 @@ const { getTrackList } = require('../filesystem/utils');
 const { joinFragments } = require('./utils/url')
 const { isValidRequest } = require('./utils/validate')
 
-// GET (stream) a specific track from work folder
 router.get('/stream/:id/:index',
   param('id').isInt(),
   param('index').isInt(),
@@ -57,7 +56,6 @@ router.get('/stream/:id/:index',
 
                 res.redirect(offloadUrl);
               } else {
-                // By default, serve file through express
                 res.sendFile(fileName);
               }
             })
@@ -101,7 +99,6 @@ router.get('/download/:id/:index',
                 // By default the directory is /media/download
                 res.redirect(offloadUrl);
               } else {
-                // By default, serve file through express
                 res.download(path.join(rootFolder.path, work.dir, track.subtitle || '', track.title));
               }
             })

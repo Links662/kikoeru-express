@@ -8,14 +8,26 @@ const { config, getPageSize } = require('../config');
 const normalize = require('./utils/normalize')
 const { isValidRequest } = require('./utils/validate');
 
+// express 5 的 path-to-regexp v8 不再支持 '/:field(circle|tag|va)s/:id' 这类正则参数，
+// 也不再支持 '/search/:keyword?' 这类可选参数，因此改成通用参数 + 校验：
+// mapFieldParam 负责把 circles/tags/vas 归一化成 req.params.field，
+// 非法值用 next('route') 跳过（等价于旧写法里正则不匹配时交给后续路由处理）。
+const FIELD_PARAMS = { circles: 'circle', tags: 'tag', vas: 'va' };
+const FIELD_PARAM_VALUES = Object.keys(FIELD_PARAMS);
 
-// GET work cover image
+const mapFieldParam = (req, res, next) => {
+  const field = FIELD_PARAMS[req.params.fields];
+  if (!field) return next('route');
+  req.params.field = field;
+  return next();
+};
+
+
 router.get('/cover/:id',
   param('id').isInt(),
   (req, res, next) => {
     if(!isValidRequest(req, res)) return;
 
-    //const rjcode = (`000000${req.params.id}`).slice(-6);
     let rjcode ;
     if (req.params.id>=1000000) {
       rjcode = (`00000000${req.params.id}`).slice(-8);
@@ -34,7 +46,6 @@ router.get('/cover/:id',
     });
 });
 
-// GET work metadata
 router.get('/work/:id',
   param('id').isInt(),
   (req, res, next) => {
@@ -53,7 +64,6 @@ router.get('/work/:id',
       .catch(err => next(err));
   });
 
-// GET track list in work folder
 router.get('/tracks/:id',
   param('id').isInt(),
   (req, res, next) => {
@@ -76,7 +86,6 @@ router.get('/tracks/:id',
       .catch(err => next(err));
 });
 
-// GET list of work ids
 router.get('/works',
   query('page').optional({ nullable: true }).isInt(),
   query('sort').optional({ nullable: true }).isIn(['desc', 'asc']),
@@ -92,7 +101,6 @@ router.get('/works',
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
 
     try {
-      // 构建基础查询
       const baseQuery = () => db.getWorksBy({});
       const totalCount = await db.getWorksCount(1)
       let works;
@@ -135,11 +143,10 @@ router.get('/works',
   });
 
 
-// GET name of a circle/tag/VA
-router.get('/:field(circle|tag|va)s/:id',
-  param('field').isIn(['circle', 'tag', 'va']),
+router.get('/:fields/:id',
+  mapFieldParam,
+  param('fields').isIn(FIELD_PARAM_VALUES),
   (req, res, next) => {
-    // In case regex matching goes wrong
     if(!isValidRequest(req, res)) return;
 
     return db.getMetadata({field: req.params.field, id: req.params.id})
@@ -158,12 +165,11 @@ router.get('/:field(circle|tag|va)s/:id',
       .catch(err => next(err));
 });
 
-// PUT favourite flag of a circle/tag/VA
-router.put('/:field(circle|tag|va)s/:id/favourite',
-  param('field').isIn(['circle', 'tag', 'va']),
+router.put('/:fields/:id/favourite',
+  mapFieldParam,
+  param('fields').isIn(FIELD_PARAM_VALUES),
   body('favourite').isBoolean(),
   (req, res, next) => {
-    // In case regex matching goes wrong
     if(!isValidRequest(req, res)) return;
 
     const notExistMessage = {
@@ -189,11 +195,9 @@ router.put('/:field(circle|tag|va)s/:id/favourite',
 });
 
 // eslint-disable-next-line no-unused-vars
-router.get('/search/:keyword?', async (req, res, next) => {
+const searchWorks = async (req, res, next) => {
   const keyword = req.params.keyword ? req.params.keyword.trim() : '';
   const currentPage = parseInt(req.query.page) || 1;
-  // 通过 "音声id, 贩卖日, 用户评价， 售出数, 评论数量, 价格, 平均评价, 全年龄新作" 排序
-  // ['id', 'release', 'rating', 'dl_count', 'review_count', 'price', 'rate_average_2dp', 'nsfw']
   const order = req.query.order || 'release';
   const sort = req.query.sort || 'desc';
   const offset = (currentPage - 1) * getPageSize();
@@ -226,23 +230,23 @@ router.get('/search/:keyword?', async (req, res, next) => {
   } catch(err) {
     res.status(500).send({error: '查询过程中出错'});
     console.error(err);
-    // next(err);
   }
-});
+};
 
-// GET list of work ids, restricted by circle/tag/VA
-router.get('/:field(circle|tag|va)s/:id/works',
-  param('field').isIn(['circle', 'tag', 'va']),
+// express 5 不支持 '/search/:keyword?' 这种可选参数，拆成带/不带关键字两条路由
+router.get('/search', searchWorks);
+router.get('/search/:keyword', searchWorks);
+
+router.get('/:fields/:id/works',
+  mapFieldParam,
+  param('fields').isIn(FIELD_PARAM_VALUES),
   // eslint-disable-next-line no-unused-vars
   async (req, res, next) => {
-    // In case regex matching goes wrong
     if(!isValidRequest(req, res)) return;
 
     const currentPage = parseInt(req.query.page) || 1;
-    // 通过 "音声id, 贩卖日, 用户评价, 售出数, 评论数量, 价格, 平均评价, 全年龄新作" 排序
-    // ['id', 'release', 'rating', 'dl_count', 'review_count', 'price', 'rate_average_2dp, 'nsfw']
     const order = req.query.order || 'release';
-    const sort = req.query.sort || 'desc'; // ['desc', 'asc]
+    const sort = req.query.sort || 'desc';
     const offset = (currentPage - 1) * getPageSize();
     const username = config.auth ? req.user.name : 'admin';
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
@@ -273,15 +277,13 @@ router.get('/:field(circle|tag|va)s/:id/works',
     } catch(err) {
       res.status(500).send({error: '查询过程中出错'});
       console.error(err);
-      // next(err);
     }
 });
 
-// GET list of circles/tags/VAs
-router.get('/:field(circle|tag|va)s/',
-  param('field').isIn(['circle', 'tag', 'va']),
+router.get('/:fields',
+  mapFieldParam,
+  param('fields').isIn(FIELD_PARAM_VALUES),
   async (req, res, next) => {
-    // In case regex matching goes wrong
     if(!isValidRequest(req, res)) return;
 
     const field = req.params.field;
