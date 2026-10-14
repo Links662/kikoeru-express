@@ -88,8 +88,8 @@ const resetSnapshot = () => {
 };
 
 /**
- * 启动扫描 / 刷新子进程；已有进程在跑时忽略
- * @param {'scan'|'update'} kind
+ * 启动扫描 / 刷新 / 封面维护子进程；已有进程在跑时忽略
+ * @param {'scan'|'update'|'covers'} kind
  * @returns {boolean} 是否真的启动了新进程
  */
 const startScan = (kind = 'scan') => {
@@ -98,7 +98,12 @@ const startScan = (kind = 'scan') => {
   resetSnapshot();
 
   const isUpdate = kind === 'update';
-  const args = isUpdate ? ['--refreshAll'] : [];
+  const isCovers = kind === 'covers';
+
+  let args = [];
+  if (isUpdate) args = ['--refreshAll'];
+  else if (isCovers) args = ['--covers'];
+
   scanner = child_process.fork(isUpdate ? SCANNER_ENTRY.update : SCANNER_ENTRY.scan, args, { silent: false });
 
   scanner.on('exit', (code) => {

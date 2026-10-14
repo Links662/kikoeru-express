@@ -58,6 +58,10 @@ const defaultConfig = {
   httpsCert: 'kikoeru.crt',
   httpsPort: 8443,
   skipCleanup: false,
+  // 本地生成的缩略图会在这些天之后尝试换成 DLsite 的原图（0 = 每次扫描都试）
+  coverUpgradeIntervalDays: 7,
+  // 允许升级为 DLsite 原图的缩略图类型；sam 是降级最明显的那个，240x240 也可以加进来
+  coverUpgradeTypes: ['sam'],
   enableGzip: true,
   rewindSeekTime: 5,
   forwardSeekTime: 30,

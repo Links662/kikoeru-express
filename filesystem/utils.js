@@ -179,40 +179,250 @@ async function* getFolderList(rootFolder, current = '', depth = 0, callback = fu
   }
 }
 
+// 封面资源：main（必需，DLsite 的 560x420 原图）和两张缩略图。
+//   240x240  DLsite 的 240x240 就是 main 的等比缩放（实测 560x420 -> 240x180），
+//            本地生成的结果与 DLsite 一致，可以离线自愈
+//   sam      原图的等比缩略图（保留原图比例：100x100 / 100x75 / ...），DLsite 仍在提供，
+//            由 main 派生只能得到 4:3 版本（丢掉原图上下部分），所以优先下载，本地生成只作兜底
+// 360x360 已废弃：不再下载/生成，只在删除工作时清理，并在路由里兼容旧客户端
+const COVER_TYPES = ['main', 'sam', '240x240'];
+const LEGACY_COVER_TYPES = ['360x360'];
+
+/**
+ * 把 work id 格式化成 DLsite 的 RJ code.
+ * @param {Number|String} id work id
+ */
+const formatRJCode = (id) => {
+  const num = Number(id);
+  return num >= 1000000
+    ? (`00000000${num}`).slice(-8)
+    : (`000000${num}`).slice(-6);
+};
+
+/**
+ * 封面文件的绝对路径.
+ * @param {String} rjcode Work RJ code (zero-padded).
+ * @param {String} type 'main' or '240x240'
+ */
+const coverFilePath = (rjcode, type) => path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`);
+
+/**
+ * 判断封面文件是否可用：存在、非空、且确实是 JPEG。
+ * 下载中途断流会在磁盘上留下 0 字节 / 截断的文件，DLsite 被拦截时还可能返回 HTML 错误页，
+ * 只判断「文件是否存在」会把这些坏文件当成有效封面，导致它们永远不会被重新下载或生成。
+ * @param {String} filePath 封面绝对路径
+ */
+const isUsableCoverFile = (filePath) => {
+  let fd;
+
+  try {
+    if (fs.statSync(filePath).size < 3) return false;
+
+    fd = fs.openSync(filePath, 'r');
+    const header = Buffer.alloc(3);
+    fs.readSync(fd, header, 0, 3, 0);
+
+    return header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF; // JPEG 的 SOI 标记
+  } catch (err) {
+    return false;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+};
+
+/**
+ * 封面来源标记：写在图片自带的 JPEG 注释段（COM，0xFFFE）里，用来记住
+ * 「这张图是本地由 main 生成的降级版」，扫描时才有依据把它换回 DLsite 的原图。
+ * 放进图片本身而不是边车文件，是为了拷库 / 搬目录 / 只备份 covers 时标记不会和图片失散
+ * —— 标记一失散，那张降级图就再也不会被修复了。
+ */
+const ORIGIN_MARKER_PREFIX = 'kikoeru-origin:';
+// 标记只可能出现在文件头（我们把段插在 SOI 之后），不必读整个文件
+const ORIGIN_SCAN_BYTES = 4096;
+
+/**
+ * 在 JPEG 头部按段结构找出我们写入的来源标记。
+ * @param {Buffer} header 文件头
+ * @param {Number} length 实际读到的字节数
+ * @returns {Object|null} { offset, size, meta }
+ */
+const findOriginSegment = (header, length) => {
+  if (length < 4 || header[0] !== 0xFF || header[1] !== 0xD8) return null;
+
+  let offset = 2;
+
+  while (offset + 4 <= length) {
+    if (header[offset] !== 0xFF) return null; // 段结构对不上就不硬猜
+
+    const marker = header[offset + 1];
+    // 0xD8 = 又一个 SOI，0xDA = SOS，后面是压缩数据，都不会再有段
+    if (marker === 0xD8 || marker === 0xDA) return null;
+
+    const size = header.readUInt16BE(offset + 2);
+    if (marker === 0xFE) {
+      const text = header.toString('utf8', offset + 4, Math.min(offset + 2 + size, length));
+      if (text.startsWith(ORIGIN_MARKER_PREFIX)) {
+        try {
+          return { offset, size, meta: JSON.parse(text.slice(ORIGIN_MARKER_PREFIX.length)) };
+        } catch (err) {
+          return null;
+        }
+      }
+    }
+
+    offset += 2 + size;
+  }
+
+  return null;
+};
+
+/**
+ * 读取封面的来源标记。
+ * @param {String} filePath 封面路径
+ * @returns {Object|null} 本地生成的标记内容（{ from, mainSize, mainMtime, at, tried }）；
+ *                        DLsite 原图、或读不到时返回 null
+ */
+const readCoverOrigin = (filePath) => {
+  let fd;
+
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const header = Buffer.alloc(ORIGIN_SCAN_BYTES);
+    const length = fs.readSync(fd, header, 0, header.length, 0);
+    const segment = findOriginSegment(header, length);
+
+    return segment ? segment.meta : null;
+  } catch (err) {
+    return null;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+};
+
+/**
+ * 给本地生成的封面打上来源标记（只改文件头，图像数据不重新编码）。
+ * @param {String} filePath 图片路径
+ * @param {Object} meta { from, mainSize, mainMtime, at, tried }
+ */
+const markCoverAsGenerated = async (filePath, meta) => {
+  const payload = Buffer.from(ORIGIN_MARKER_PREFIX + JSON.stringify(meta), 'utf8');
+  const size = payload.length + 2; // 段长包含自身的 2 字节
+  const segment = Buffer.concat([
+    Buffer.from([0xFF, 0xFE, (size >> 8) & 0xFF, size & 0xFF]),
+    payload,
+  ]);
+
+  const original = await fs.promises.readFile(filePath);
+  const existing = findOriginSegment(original, original.length);
+  // 已经有标记就先把旧段去掉，避免重复插入
+  const clean = existing
+    ? Buffer.concat([
+      original.subarray(0, existing.offset),
+      original.subarray(existing.offset + 2 + existing.size),
+    ])
+    : original;
+
+  if (clean.length < 4) throw new Error('不是有效的图片文件');
+
+  const tempPath = `${filePath}.part`;
+  await fs.promises.writeFile(tempPath, Buffer.concat([clean.subarray(0, 2), segment, clean.subarray(2)]));
+  await fs.promises.rename(tempPath, filePath);
+};
+
+/**
+ * 取文件的 size + mtime，用来判断本地生成的缩略图是否跟着 main 过期了。
+ * @param {String} filePath
+ * @returns {Object|null} { size, mtime } 或 null（读不到）
+ */
+const getFileStamp = (filePath) => {
+  try {
+    const stat = fs.statSync(filePath);
+    return { size: stat.size, mtime: Math.floor(stat.mtimeMs) };
+  } catch (err) {
+    return null;
+  }
+};
+
 /**
  * Deletes a work's cover image from disk.
- * @param {String} rjcode Work RJ code (only the 6 digits, zero-padded).
+ * @param {String} rjcode Work RJ code (zero-padded).
  */
-const deleteCoverImageFromDisk = rjcode => new Promise((resolve, reject) => {
-  const types = ['main', 'sam', '240x240', '360x360'];
-  types.forEach(type => {
-    try {
-      fs.unlinkSync(path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`));
-    } catch (err) {
-      reject(err);
-    }
-  });
+const deleteCoverImageFromDisk = async (rjcode) => {
+  const types = [...COVER_TYPES, ...LEGACY_COVER_TYPES];
+  const results = await Promise.allSettled(
+    types.map(type => fs.promises.unlink(coverFilePath(rjcode, type))),
+  );
 
-  resolve();
-});
+  // 文件本来就不存在（ENOENT）是正常情况，其他错误才交给调用方处理
+  const failed = results.find(result => result.status === 'rejected' && result.reason.code !== 'ENOENT');
+  if (failed) throw failed.reason;
+};
 
 /**
  * Saves cover image to disk.
+ * 用 'finish'（数据全部写完）而不是 'close' 判定成功：响应体中途断流时 'close' 一样会触发，
+ * 会把半个文件当成下载成功。先写 .part 再改名，同理避免半成品出现在正式路径上。
+ * 改名之前先校验一遍：DLsite 被拦截时可能返回 200 + 一个 HTML 错误页，
+ * 校验不过就直接失败，不会覆盖掉已经有用的封面。
  * @param {ReadableStream} stream Image data stream.
- * @param {String} rjcode Work RJ code (only the 6 digits, zero-padded).
- * @param {String} types img type: ('main', 'sam', 'sam@2x', 'sam@3x', '240x240', '360x360').
+ * @param {String} rjcode Work RJ code (zero-padded).
+ * @param {String} type img type: 'main' or '240x240'.
  */
 const saveCoverImageToDisk = (stream, rjcode, type) => new Promise((resolve, reject) => {
-  // TODO: don't assume image is a jpg?
-  try {
-    stream.pipe(
-      fs.createWriteStream(path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`))
-        .on('close', () => resolve()),
-    );
-  } catch (err) {
-    reject(err);
-  }
+  const finalPath = coverFilePath(rjcode, type);
+  const tempPath = `${finalPath}.part`;
+  const out = fs.createWriteStream(tempPath);
+  let sourceEnded = false;
+  let streamError = null;
+  let settled = false;
+
+  const fail = (err) => {
+    if (settled) return;
+    settled = true;
+
+    out.destroy();
+    stream.destroy();
+    fs.promises.unlink(tempPath)
+      .catch(() => {})
+      .then(() => reject(err));
+  };
+
+  // 必须显式接住源流错误：pipe 不会把错误传给写入流，Promise 也就永远不会结束
+  stream.on('error', (err) => {
+    streamError = err;
+    fail(err);
+  });
+  stream.on('end', () => { sourceEnded = true; });
+  // 连接被直接掐断时源流可能只触发 close 而不触发 error；已经报过错的就用那个错误
+  stream.on('close', () => {
+    if (!sourceEnded && !streamError) fail(new Error('封面下载没有完成（连接中断）'));
+  });
+  out.on('error', fail);
+  out.on('finish', () => {
+    if (settled) return;
+
+    if (!isUsableCoverFile(tempPath)) {
+      return fail(new Error('下载到的内容不是有效图片'));
+    }
+
+    fs.promises.rename(tempPath, finalPath).then(() => resolve(), fail);
+  });
+
+  stream.pipe(out);
 });
+
+/**
+ * 清理下载中断留下的 .part 半成品。
+ */
+const removeTemporaryCoverFiles = async () => {
+  const entries = await fs.promises.readdir(config.coverFolderDir).catch(() => []);
+
+  await Promise.all(
+    entries
+      .filter(name => name.endsWith('.jpg.part'))
+      .map(name => fs.promises.unlink(path.join(config.coverFolderDir, name)).catch(() => {})),
+  );
+};
 
 
 module.exports = {
@@ -221,5 +431,13 @@ module.exports = {
   getFolderList,
   deleteCoverImageFromDisk,
   saveCoverImageToDisk,
+  removeTemporaryCoverFiles,
+  COVER_TYPES,
+  formatRJCode,
+  coverFilePath,
+  isUsableCoverFile,
+  readCoverOrigin,
+  markCoverAsGenerated,
+  getFileStamp,
 };
 

@@ -72,6 +72,10 @@ const initSocket = (server) => {
       scannerState.startScan('update');
     });
 
+    socket.on('PERFORM_COVER_REPAIR', () => {
+      scannerState.startScan('covers');
+    });
+
     socket.on('KILL_SCAN_PROCESS', () => {
       // 没有扫描在跑时安全忽略：原先这里会对 null 调 send()，直接把服务端打崩
       scannerState.killScan();

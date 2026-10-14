@@ -55,11 +55,17 @@ const retryGet = async (url, config) => {
     clearTimeout(timeoutId);
     return response;
   } catch (error) {
+    clearTimeout(timeoutId);
+
     const backoff = new Promise((resolve) => {
       setTimeout(() => resolve(), config.retry.retryDelay);
     });
 
-    if (config.retry.retryCount < config.retry.limit && !error.response) {
+    // 没有响应（连接层错误）和 5xx（服务端临时故障）值得重试；
+    // 4xx 重试没有意义，比如某些作品本来就没有对应尺寸的封面
+    const isRetryable = !error.response || error.response.status >= 500;
+
+    if (config.retry.retryCount < config.retry.limit && isRetryable) {
       config.retry.retryCount += 1;
       await backoff;
       console.log(`${url} 第 ${config.retry.retryCount} 次重试请求`);

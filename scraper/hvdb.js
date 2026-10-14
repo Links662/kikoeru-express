@@ -25,6 +25,7 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
     .then((data) => {
       const work = { id, tags: [], vas: [] };
       let writeTo;
+      let currentVaName = '';
 
       const parser = new htmlparser.Parser({
         onopentag: (name, attrs) => {

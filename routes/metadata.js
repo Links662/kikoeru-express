@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { param, query, body} = require('express-validator');
 const db = require('../database/db');
-const { getTrackList, toTree } = require('../filesystem/utils');
+const { getTrackList, toTree, formatRJCode, coverFilePath, isUsableCoverFile } = require('../filesystem/utils');
 const { config, getPageSize } = require('../config');
 const normalize = require('./utils/normalize')
 const { isValidRequest } = require('./utils/validate');
@@ -23,27 +23,52 @@ const mapFieldParam = (req, res, next) => {
 };
 
 
+// 封面类型：main（必需，560x420 原图）、sam / 240x240（两张缩略图）。
+// sam@2x / sam@3x 是 sam 的高分变体，360x360 已废弃，都由这里兼容到现有类型。
+const LEGACY_COVER_TYPE_MAP = {
+  'sam@2x': 'sam',
+  'sam@3x': 'sam',
+  '360x360': '240x240'
+};
+// 请求的类型缺失时按这里的顺序降级，最后退回占位图。
+// 小图缺失时前端拿到的会是更大的一张（由 CSS 缩放、必要时留白显示），而不是破图。
+const COVER_TYPE_FALLBACK = {
+  'main': [],
+  'sam': ['240x240', 'main'],
+  '240x240': ['main']
+};
+const NO_IMAGE_PATH = path.join(__dirname, '../static/no-image.jpg');
+
 router.get('/cover/:id',
   param('id').isInt(),
   (req, res, next) => {
     if(!isValidRequest(req, res)) return;
 
-    let rjcode ;
-    if (req.params.id>=1000000) {
-      rjcode = (`00000000${req.params.id}`).slice(-8);
-    } else {
-      rjcode = (`000000${req.params.id}`).slice(-6);
-    }
-    const type = req.query.type || 'main'; // 'main', 'sam', '240x240', '360x360'
-    res.sendFile(path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`), (err) => {
-      if (err) {
-        res.sendFile(path.join(__dirname, '../static/no-image.jpg'), (err2) => {
-          if (err2) {
-            next(err2);
-          }
+    const rjcode = formatRJCode(req.params.id);
+    const requestedType = String(req.query.type || 'main');
+    const type = LEGACY_COVER_TYPE_MAP[requestedType] || requestedType;
+    // 白名单：未知类型（包括用来拼路径的恶意片段）一律按 main 处理
+    const candidates = Object.prototype.hasOwnProperty.call(COVER_TYPE_FALLBACK, type)
+      ? [type].concat(COVER_TYPE_FALLBACK[type])
+      : ['main'];
+    const filePaths = [...new Set(candidates)].map(candidate => coverFilePath(rjcode, candidate));
+
+    const sendFallback = (index) => {
+      if (index >= filePaths.length) {
+        return res.sendFile(NO_IMAGE_PATH, (err) => {
+          if (err && !res.headersSent) next(err);
         });
       }
-    });
+
+      // 0 字节 / 截断的封面（下载中断留下的）视为缺失，继续降级
+      if (!isUsableCoverFile(filePaths[index])) return sendFallback(index + 1);
+
+      res.sendFile(filePaths[index], (err) => {
+        if (err && !res.headersSent) sendFallback(index + 1);
+      });
+    };
+
+    sendFallback(0);
 });
 
 router.get('/work/:id',
@@ -97,7 +122,6 @@ router.get('/works',
     const order = req.query.order || 'release';
     const sort = req.query.sort || 'desc';
     const offset = (currentPage - 1) * getPageSize();
-    const username = config.auth ? req.user.name : 'admin';
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
 
     try {
@@ -248,7 +272,6 @@ router.get('/:fields/:id/works',
     const order = req.query.order || 'release';
     const sort = req.query.sort || 'desc';
     const offset = (currentPage - 1) * getPageSize();
-    const username = config.auth ? req.user.name : 'admin';
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
 
     try {
