@@ -7,13 +7,18 @@
 - 通过标签或关键字快速检索想要找到的音声
 - 根据音声元数据对检索结果进行排序
 - 可以选择通过 JWT 验证用户或关闭用户认证功能
-- 支持在 Web 端修改配置文件和扫描音声库
-- 支持为音声库添加多个根文件夹
+- 支持在 Web 端修改配置文件和扫描存储位置
+- 支持添加多个根文件夹作为存储位置
 - 支持历史记录功能
+- 收藏社团 / 标签 / 声优，收藏数据按用户隔离
+- 封面维护：补齐缺失封面、重建过期缩略图、把本地生成的降级图升级为 DLsite 原图
 
 ## 安装
 
 ### 源码安装
+
+需要 Node.js 22 及以上（见 `package.json` 的 `engines`）。
+
 #### 后端安装
 ```bash
 # 安装依赖
@@ -66,14 +71,17 @@ docker compose up -d
 - knexjs (操作数据库)
 - cheerio (将 html 解析为 jQuery 对象)
 - jsonwebtoken (用户认证)
-- socket.io (用于将扫描音声库的结果实时传给客户端)
+- socket.io (用于将扫描存储位置的结果实时传给客户端)
 - lrc-file-parser (解析播放LRC歌词文件)
 - jschardet (判断文本文件编码)
+- jimp (本地生成封面缩略图)
+- yargs (扫描 / 封面维护脚本的命令行参数)
 - child_process (nodejs 子进程)
 
 
 ## 项目目录结构
 ```
+├── auth/                    # JWT 签发与校验工具
 ├── routes/                  # 主要路由
 ├── config/                  # 存放配置文件
 ├── covers/                  # 存放音声封面
@@ -83,16 +91,19 @@ docker compose up -d
 ├── scraper/                 # 存放爬虫相关代码
 ├── sqlite/                  # 存放 sqlite 数据库文件
 ├── static/                  # 存放静态资源
+├── test/                    # mocha 测试（含封面维护用例）
+├── VoiceWork/               # 默认挂载进来的音声库目录
 ├── .gitignore               # git 忽略路径
 ├── .dockerignore            # Docker 忽略路径
 ├── api.js                   # 为 express 实例添加路由与 jwt 验证中间件
 ├── app.js                   # 项目入口文件
+├── scannerState.js          # 扫描子进程的唯一状态源，供 socket 广播与 /api/scanner/state 查询
 ├── socket.js                # 用于初始化socket.io
 ├── config.js                # 用于生成与修改 config.json 配置文件，导出公共配置以及升级锁
 ├── Dockerfile               # 用于构建 docker 镜像的文本文件
 ├── docker-compose.yml       # 用于使用docker-compose一键构建环境
 ├── package.json             # npm 脚本和依赖项
-├── eslintrc.json            # ESLint
+├── .eslintrc.json           # ESLint
 ```
 
 ## 其他
@@ -102,6 +113,8 @@ docker compose up -d
 - [x] 历史记录改为每个作品仅保留一条记录：`t_history` 改用 `(work_id, user_name)` 联合主键，写入使用 `ON CONFLICT` 覆盖更新
 - [x] 数据库外键补充级联更新 / 删除（`t_work`、`r_tag_work`、`t_review`、`t_history` 等），dbVersion 升级至 20261012
 - [x] Dockerfile 构建改用 npmmirror 镜像源加速依赖安装
+- [x] 依赖整体升级，Node.js 要求提升至 22
+- [x] 新增封面维护功能
 
 ### 感谢
 本项目的大部分后端代码来自于开源项目 [kikoeru](https://github.com/nortonandrews/kikoeru)
