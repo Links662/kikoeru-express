@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { config } = require('../config');
-const scannerState = require('../scannerState');
+const scannerState = require('../state/scannerState');
 
 // 扫描进度快照；socket 不可用（代理拦截 websocket、断线且重连失败等）时前端退化为轮询此接口
 router.get('/state', (req, res) => {

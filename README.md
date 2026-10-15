@@ -88,6 +88,8 @@ docker compose up -d
 ├── database/                # 操作数据库相关代码
 ├── dist/                    # 存放前端项目 kikoeru-quasar 构建的 PWA
 ├── filesystem/              # 存放扫描相关代码
+├── state/                   # 存放常驻进程级状态
+│   └── scannerState.js      # 扫描子进程的唯一状态源，供 socket 广播与 /api/scanner/state 查询
 ├── scraper/                 # 存放爬虫相关代码
 ├── sqlite/                  # 存放 sqlite 数据库文件
 ├── static/                  # 存放静态资源
@@ -97,7 +99,6 @@ docker compose up -d
 ├── .dockerignore            # Docker 忽略路径
 ├── api.js                   # 为 express 实例添加路由与 jwt 验证中间件
 ├── app.js                   # 项目入口文件
-├── scannerState.js          # 扫描子进程的唯一状态源，供 socket 广播与 /api/scanner/state 查询
 ├── socket.js                # 用于初始化socket.io
 ├── config.js                # 用于生成与修改 config.json 配置文件，导出公共配置以及升级锁
 ├── Dockerfile               # 用于构建 docker 镜像的文本文件

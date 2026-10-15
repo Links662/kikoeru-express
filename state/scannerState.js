@@ -14,8 +14,8 @@ const child_process = require('child_process');
  */
 
 const SCANNER_ENTRY = {
-  scan: path.join(__dirname, './filesystem/scanner.js'),
-  update: path.join(__dirname, './filesystem/updater.js')
+  scan: path.join(__dirname, '../filesystem/scanner.js'),
+  update: path.join(__dirname, '../filesystem/updater.js')
 };
 
 let scanner = null;

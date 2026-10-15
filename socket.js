@@ -2,7 +2,7 @@ const socket = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { config } = require('./config');
 const {getWorksCount} = require('./database/db');
-const scannerState = require('./scannerState');
+const scannerState = require('./state/scannerState');
 
 // socket.io v4 默认不再自动放行跨域握手（v2 时代是放开的）。这里保持等价行为：
 // 生产环境前后端同源部署不受影响，开发时前端跑在别的端口需要它。
