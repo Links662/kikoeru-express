@@ -82,7 +82,9 @@ router.put('/user', [
   if (!config.auth || isAdministrator(req) || isSelf) {
     try {
       await db.updateUserPassword(user, await hashPassword(req.body.newPassword));
-      res.send({ message: '密码修改成功.' });
+      // self 告诉前端改的是不是调用者自己的账号：只有改自己的密码才值得退回登录页，
+      // 管理员改别人的密码不该把自己踢下线
+      res.send({ message: '密码修改成功.', self: isSelf });
     } catch (err) {
       sendDbError(res, next, err);
     }
@@ -119,6 +121,8 @@ router.put('/user/status', [
 
   const name = req.body.name;
   const disabled = toBoolean(req.body.disabled);
+  // 禁用的就是调用者自己的账号：前端要当场退登（这个会话在服务端已经不再可用）
+  const isSelf = req.user !== undefined && req.user.name === name;
 
   db.setUserDisabled(name, disabled)
     .then((result) => {
@@ -130,6 +134,7 @@ router.put('/user/status', [
       res.send({
         message: disabled ? `用户 ${name} 已禁用.` : `用户 ${name} 已启用.`,
         user: { name: result.name, disabled: result.disabled },
+        self: isSelf,
       });
     })
     .catch((err) => sendDbError(res, next, err));
