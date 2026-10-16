@@ -1,6 +1,6 @@
 const { knex } = require('./db');
 
-const dbVersion = '20261012';
+const dbVersion = '20261015';
 
 const createCoreTables = async () => {
   const exists = await knex.schema.hasTable('t_circle');
@@ -31,7 +31,7 @@ const createCoreTables = async () => {
       table.text('rank');
       table.timestamp('insert_time').defaultTo(knex.fn.now()); // 补全视图中引用的字段
       table.foreign('circle_id').references('id').inTable('t_circle').onUpdate('CASCADE').onDelete('CASCADE');
-      table.index(['circle_id', 'release', 'dl_count', 'review_count', 'price', 'rate_average_2dp'], 't_work_index');
+      table.index(['circle_id', 'release'], 't_work_index');
     })
     .createTable('t_tag', (table) => {
       table.increments();
@@ -71,7 +71,6 @@ const createCoreTables = async () => {
       table.string('user_name').notNullable().references('name').inTable('t_user').onDelete('CASCADE');
       table.string('field').notNullable();
       table.string('item_id').notNullable();
-      table.timestamp('created_at').defaultTo(knex.fn.now());
       table.primary(['user_name', 'field', 'item_id']);
     });
   
@@ -89,8 +88,8 @@ const createHistoryTable = async () => {
       table.string('file_name');
       table.integer('play_time');
       table.integer('total_time');
-      table.timestamps(true, true);
-      
+      table.timestamp('updated_at').notNullable().defaultTo(knex.fn.now());
+
       table.primary(['work_id', 'user_name']);
   });
   console.log(' * 成功构建历史记录表.');
@@ -101,7 +100,7 @@ const createView = async () => {
 
   const selectQuery = knex('t_work as w')
     .select(
-      'w.id', 'w.title', 'w.circle_id', 'c.name',
+      'w.id', 'w.title', 'w.circle_id',
       knex.raw("json_object('id', w.circle_id, 'name', c.name) AS circleObj"),
       'w.nsfw', 'w.release', 'w.dl_count', 'w.price', 'w.review_count', 'w.rate_count',
       'w.rate_average_2dp', 'w.rate_count_detail', 'w.rank', 'w.insert_time',
@@ -137,4 +136,4 @@ const initDatabase = async () => {
   }
 };
 
-module.exports = { initDatabase, dbVersion };
+module.exports = { initDatabase, createView, dbVersion };
