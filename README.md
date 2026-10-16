@@ -7,6 +7,8 @@
 - 通过标签或关键字快速检索想要找到的音声
 - 根据音声元数据对检索结果进行排序
 - 可以选择通过 JWT 验证用户或关闭用户认证功能
+- 用户管理：新增 / 删除用户、修改密码，以及「禁用 / 启用」账号（内置 admin 账号不可删除，但可以禁用）
+- 用户组只有 user / administrator 两种（原 guest 组已取消，残留账号启动时自动归到 user）
 - 支持在 Web 端修改配置文件和扫描存储位置
 - 支持添加多个根文件夹作为存储位置
 - 支持历史记录功能
@@ -71,6 +73,7 @@ docker compose up -d
 - knexjs (操作数据库)
 - cheerio (将 html 解析为 jQuery 对象)
 - jsonwebtoken (用户认证)
+- crypto.scrypt (密码哈希，Node 内置，无需原生编译)
 - socket.io (用于将扫描存储位置的结果实时传给客户端)
 - lrc-file-parser (解析播放LRC歌词文件)
 - jschardet (判断文本文件编码)
@@ -116,6 +119,10 @@ docker compose up -d
 - [x] Dockerfile 构建改用 npmmirror 镜像源加速依赖安装
 - [x] 依赖整体升级，Node.js 要求提升至 22
 - [x] 新增封面维护功能
+- [x] 用户管理安全加固：新增「禁用 / 启用账号」；被禁用 / 被删除 / 用户组变更的账号立即失效；删除与禁用都要求至少保留一个已启用的管理员，避免把管理后台锁死；
+- [x] 密码哈希从单轮 salted md5 换成 scrypt（Node 内置，N=2^17 / r=8 / p=1；老 md5 哈希不再接受，需用重置模式重设密码）
+- [x] 新增「密码重置模式」救援通道：`KIKOERU_PASSWORD_RESET=1` 启动后只提供重置页面，需一次性令牌、仅限 administrator、一次窗口只成功一次
+
 
 ### 感谢
 本项目的大部分后端代码来自于开源项目 [kikoeru](https://github.com/nortonandrews/kikoeru)

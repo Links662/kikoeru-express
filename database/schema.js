@@ -1,6 +1,6 @@
 const { knex } = require('./db');
 
-const dbVersion = '20261015';
+const dbVersion = '20261016';
 
 const createCoreTables = async () => {
   const exists = await knex.schema.hasTable('t_circle');
@@ -57,6 +57,7 @@ const createCoreTables = async () => {
       table.string('name').primary();
       table.string('password').notNullable();
       table.string('group').notNullable();
+      table.boolean('disabled').notNullable().defaultTo(false);
     })
     .createTable('t_review', (table) => {
       table.string('user_name').references('name').inTable('t_user').onUpdate('CASCADE').onDelete('CASCADE');

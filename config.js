@@ -38,7 +38,6 @@ const defaultConfig = {
   dbUseDefaultPath: true, // Ignores databaseFolderDir if set to true
   voiceWorkDefaultPath: voiceWorkDefaultPath(),
   auth: process.env.NODE_ENV === 'production' ? true : false,
-  md5secret: crypto.randomBytes(32).toString('hex'),
   jwtsecret: crypto.randomBytes(32).toString('hex'),
   expiresIn: 2592000,
   scannerMaxRecursionDepth: 2,
@@ -84,7 +83,6 @@ const setConfig = (newConfig, writeConfigToFile = !process.env.FREEZE_CONFIG_FIL
   if (process.env.NODE_ENV === 'production' || config.production) {
     newConfig.auth = true;
   }
-  newConfig.md5secret = config.md5secret;
   newConfig.jwtsecret = config.jwtsecret;
 
   // Merge config
@@ -105,6 +103,10 @@ const readConfig = () => {
       }
     }
   }
+
+  // md5secret 是旧密码哈希（md5(密码 + md5secret)）用的，现在密码走 scrypt，
+  // 这个键已经没人读：老 config.json 里残留的值直接丢掉，下次保存设置时会从文件里消失
+  delete config.md5secret;
 
   // Support reading relative path
   // When config is saved in admin panel, it will still be stored as absolute path 

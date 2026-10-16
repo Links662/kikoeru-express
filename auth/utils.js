@@ -1,5 +1,4 @@
 const jwt = require('jsonwebtoken');
-const md5 = require('md5');
 
 const { config } = require('../config');
 
@@ -21,11 +20,8 @@ const signToken = (user) => {
   return signPayload(payload)
 }
 
-const cmd5 = (str) => md5(str + config.md5secret);
-
 module.exports = {
   signToken,
-  md5: cmd5,
   issuer,
   audience
 }

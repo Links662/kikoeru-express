@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { md5 } = require('../auth/utils');
+const { hashPassword } = require('../auth/password');
 const { databaseExist, createUser } = require('./db');
 const { config } = require('../config');
 const { initDatabase } = require('./schema');
@@ -24,7 +24,7 @@ const initApp = async () => {
     try { // 创建内置的管理员账号
       await createUser({
         name: 'admin',
-        password: md5('admin'),
+        password: await hashPassword('admin'),
         group: 'administrator'
       });
     } catch(err) {{

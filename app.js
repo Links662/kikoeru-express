@@ -23,11 +23,15 @@ if (process.env.NODE_ENV === 'test' || process.env.CRASH_ON_UNHANDLED) {
 const { initApp }= require('./database/init');
 const initSocket = require('./socket');
 const { config } = require('./config');
+const passwordReset = require('./routes/passwordReset');
 const api = require('./api');
 const app = express();
 
 // 初始化或迁移数据库与配置（非阻塞）
 initApp().catch(err => console.error(err));
+
+// 密码重置模式（KIKOERU_PASSWORD_RESET=1）：只提供重置页面，不挂载任何业务接口
+const resetMode = passwordReset.isResetMode();
 
 if (config.behindProxy) {
   // Only useful if you are using a reverse proxy e.g. nginx
@@ -52,21 +56,26 @@ if (process.env.NODE_ENV === 'development') {
   app.use('/media/download/VoiceWork', express.static('VoiceWork'), require('serve-index')('VoiceWork', {'icons': true}));
 }
 
-// connect-history-api-fallback 中间件后所有的 GET 请求都会变成 index (default: './index.html').
-app.use(history({
-  // 将所有带 api 的 GET 请求都代理到 parsedUrl.path, 其实就是原来的路径
-  rewrites: [
-    {
-      from: /^\/api\/.*$/,
-      to: context => context.parsedUrl.path
-    }
-  ]
-}));
-// Expose API routes
-api(app);
+if (resetMode) {
+  // 重置模式下只有重置页面：不挂 history / 不挂业务接口 / 不挂前端静态资源
+  app.use(passwordReset.router);
+} else {
+  // connect-history-api-fallback 中间件后所有的 GET 请求都会变成 index (default: './index.html').
+  app.use(history({
+    // 将所有带 api 的 GET 请求都代理到 parsedUrl.path, 其实就是原来的路径
+    rewrites: [
+      {
+        from: /^\/api\/.*$/,
+        to: context => context.parsedUrl.path
+      }
+    ]
+  }));
+  // Expose API routes
+  api(app);
 
-// Serve WebApp routes
-app.use(express.static(path.join(__dirname, './dist')));
+  // Serve WebApp routes
+  app.use(express.static(path.join(__dirname, './dist')));
+}
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
@@ -105,10 +114,12 @@ if (config.httpsEnabled) {
   }
 }
 
-// websocket 握手依赖 http 服务
-initSocket(server);
-if (config.httpsEnabled) {
-  initSocket(httpsServer);
+// websocket 握手依赖 http 服务（重置模式下不初始化）
+if (!resetMode) {
+  initSocket(server);
+  if (config.httpsEnabled) {
+    initSocket(httpsServer);
+  }
 }
 
 const listenPort = process.env.PORT || config.listenPort || 8888;
@@ -122,6 +133,9 @@ if (config.httpsEnabled && httpsSuccess) {
 
 server.on('listening', () => {
   console.log('Express server started on port %s at %s', server.address().port, server.address().address);
+  if (resetMode) {
+    passwordReset.printResetInstructions(server.address().port);
+  }
 })
 
 if (config.httpsEnabled && httpsSuccess) {

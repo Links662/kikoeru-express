@@ -11,6 +11,12 @@ const knex = require('knex')(conn);
 let cachedTotalCount = null;
 
 /**
+ * 给 Error 挂上 HTTP 状态码，路由层直接用它决定响应码，
+ * 不用再靠匹配错误文案来判断是哪种失败。
+ */
+const httpError = (status, message) => Object.assign(new Error(message), { status });
+
+/**
  * Takes a work metadata object and inserts it into the database.
  * @param {Object} work Work object.
  */
@@ -382,7 +388,7 @@ const createUser = user => knex.transaction(trx => trx('t_user')
   .first()
   .then((res) => {
     if (res) {
-      throw new Error(`用户 ${user.name} 已存在.`);
+      throw httpError(403, `用户 ${user.name} 已存在.`);
     }
     return trx('t_user')
       .insert(user);
@@ -398,7 +404,7 @@ const updateUserPassword = (user, newPassword) => knex.transaction(trx => trx('t
   .first()
   .then((res) => {
     if (!res) {
-      throw new Error('用户名或密码错误.');
+      throw httpError(403, '用户名错误.');
     }
     return trx('t_user')
       .where('name', '=', user.name)
@@ -408,30 +414,96 @@ const updateUserPassword = (user, newPassword) => knex.transaction(trx => trx('t
   }));
 
 /**
- * 重置用户密码为 "password"
- * @param {Object} user User object.
+ * 读取账号状态（不含密码哈希），用于鉴权中间件判断账号是否仍然可用
+ * @param {String} name 用户名
+ * @returns {Promise<Object|undefined>} { name, group, disabled }
  */
-const resetUserPassword = (user) => knex.transaction(trx => trx('t_user')
-  .where('name', '=', user.name)
+const getUserState = name => knex('t_user')
+  .select('name', 'group', 'disabled')
+  .where('name', '=', name)
+  .first();
+
+/**
+ * 统计仍然启用的管理员数量
+ * @param {Object} trx 可选的 knex 事务对象，默认走连接池
+ */
+const countEnabledAdministrators = (trx = knex) => trx('t_user')
+  .where('group', '=', 'administrator')
+  .andWhere('disabled', '=', 0)
+  .count('* as count')
   .first()
-  .then((res) => {
-    if (!res) {
-      throw new Error('用户名错误.');
+  .then(res => Number(res.count));
+
+/**
+ * 启用 / 禁用账号。禁用后该账号不能登录，已签发的 token 也会立刻失效
+ * （见 api.js 里的账号状态校验），但不会删除它的评语、收藏和历史记录。
+ *
+ * 内置的 admin 账号同样可以禁用，这是它唯一的“下线”方式 —— 删除接口会拒绝
+ * 删除 admin。为避免把管理后台彻底锁死，这里始终要求至少留一个已启用的管理员。
+ *
+ * @param {String} name 用户名
+ * @param {Boolean} disabled true 表示禁用
+ */
+const setUserDisabled = (name, disabled) => knex.transaction(async (trx) => {
+  const user = await trx('t_user').select('name', 'group', 'disabled').where('name', '=', name).first();
+  if (!user) {
+    throw httpError(404, `用户 ${name} 不存在.`);
+  }
+
+  if (disabled && user.group === 'administrator' && user.disabled !== 1) {
+    const enabledAdministrators = await countEnabledAdministrators(trx);
+    if (enabledAdministrators <= 1) {
+      throw httpError(403, '至少要保留一个已启用的管理员账号，不能禁用最后一个管理员.');
     }
-    return trx('t_user')
-      .where('name', '=', user.name)
-      .update({
-        password: 'password'
-      });
-  }));
+  }
+
+  const nextDisabled = disabled ? 1 : 0;
+  if (user.disabled === nextDisabled) {
+    return { name: user.name, disabled: nextDisabled, changed: false };
+  }
+
+  await trx('t_user').where('name', '=', user.name).update({ disabled: nextDisabled });
+
+  return { name: user.name, disabled: nextDisabled, changed: true };
+});
 
 /**
  * 删除用户
- * @param {Object} user User object.
+ *
+ * 两条限制：内置的 admin 账号不允许删除（要下线它请用「禁用」），
+ * 删除后必须至少留下一个已启用的管理员账号，避免管理后台无人能进。
+ *
+ * 删除会级联清掉该账号的评语 / 收藏 / 历史记录（外键 ON DELETE CASCADE）。
+ *
+ * @param {String[]} names 用户名列表
  */
-const deleteUser = users => knex.transaction(trx => trx('t_user')
-  .where('name', 'in', users.map(user => user.name))
-  .del());
+const deleteUser = names => knex.transaction(async (trx) => {
+  const uniqueNames = [...new Set(names)];
+
+  if (uniqueNames.includes('admin')) {
+    throw httpError(403, '不能删除内置的管理员账号，如需停用它请使用「禁用」.');
+  }
+
+  const users = await trx('t_user').select('name', 'group', 'disabled').whereIn('name', uniqueNames);
+  if (users.length === 0) {
+    throw httpError(404, '选中的账号不存在.');
+  }
+
+  const removedEnabledAdministrators = users
+    .filter(user => user.group === 'administrator' && user.disabled !== 1)
+    .length;
+
+  if (removedEnabledAdministrators > 0) {
+    const enabledAdministrators = await countEnabledAdministrators(trx);
+    if (enabledAdministrators - removedEnabledAdministrators < 1) {
+      throw httpError(403, '至少要保留一个已启用的管理员账号.');
+    }
+  }
+
+  await trx('t_user').whereIn('name', uniqueNames).del();
+
+  return { deleted: users.map(user => user.name) };
+});
 
 
 const updateUserReview = async (username, workid, rating, review_text = '', progress = '', starOnly = true, progressOnly= false) => knex.transaction(async(trx) => {
@@ -600,7 +672,8 @@ module.exports = {
   knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksCount, getWorksByKeyWord, updateWorkMetadata,
   getLabels, getMetadata, getFavourites, setFavourite,
   getRecentWorkIds,
-  createUser, updateUserPassword, resetUserPassword, deleteUser,
+  createUser, updateUserPassword, deleteUser,
+  getUserState, setUserDisabled,
   getWorksWithReviews, updateUserReview, deleteUserReview,
   insertHistory, getHistoryByWorkId, getHistoryGroupByWorkId,deleteHistoryByUserName,
   databaseExist
