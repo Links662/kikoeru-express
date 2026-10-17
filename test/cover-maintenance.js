@@ -121,20 +121,20 @@ describe('cover maintenance', function () {
     it('reports nothing to do when covers are downloaded originals', function () {
       writeCovers();
 
-      expect(planCoverMaintenance(RJCODE)).to.deep.equal({ missing: [], stale: [], upgradable: [] });
+      expect(planCoverMaintenance(WORK_ID)).to.deep.equal({ missing: [], stale: [], upgradable: [] });
     });
 
     it('marks a locally generated cover as upgradable', async function () {
       writeCovers();
-      await generateCoverFromMain(RJCODE, 'sam');
+      await generateCoverFromMain(WORK_ID, 'sam');
 
-      expect(planCoverMaintenance(RJCODE).upgradable).to.deep.equal(['sam']);
+      expect(planCoverMaintenance(WORK_ID).upgradable).to.deep.equal(['sam']);
       expect(readCoverOrigin(coverFilePath(RJCODE, 'sam')).from).to.equal('main');
     });
 
     it('waits out the retry interval before trying again', async function () {
       writeCovers();
-      await generateCoverFromMain(RJCODE, 'sam');
+      await generateCoverFromMain(WORK_ID, 'sam');
       await markCoverAsGenerated(coverFilePath(RJCODE, 'sam'), {
         from: 'main',
         mainSize: getFileStamp(coverFilePath(RJCODE, 'main')).size,
@@ -143,7 +143,7 @@ describe('cover maintenance', function () {
         tried: Date.now()
       });
 
-      expect(planCoverMaintenance(RJCODE).upgradable).to.deep.equal([]);
+      expect(planCoverMaintenance(WORK_ID).upgradable).to.deep.equal([]);
 
       await markCoverAsGenerated(coverFilePath(RJCODE, 'sam'), {
         from: 'main',
@@ -153,17 +153,17 @@ describe('cover maintenance', function () {
         tried: Date.now() - 8 * DAY
       });
 
-      expect(planCoverMaintenance(RJCODE).upgradable).to.deep.equal(['sam']);
+      expect(planCoverMaintenance(WORK_ID).upgradable).to.deep.equal(['sam']);
     });
 
     it('regenerates covers whose source main has changed', async function () {
       writeCovers();
-      await generateCoverFromMain(RJCODE, 'sam');
+      await generateCoverFromMain(WORK_ID, 'sam');
 
       // main 换成了另一张（大小/时间都变了）
       fs.writeFileSync(coverFilePath(RJCODE, 'main'), await makeJpeg(0x00ff00ff, 480, 360));
 
-      const plan = planCoverMaintenance(RJCODE);
+      const plan = planCoverMaintenance(WORK_ID);
       expect(plan.stale).to.deep.equal(['sam']);
       expect(plan.upgradable).to.deep.equal([]);
     });
@@ -171,7 +171,7 @@ describe('cover maintenance', function () {
     it('treats every existing type as upgradable with refreshAllCovers', function () {
       writeCovers();
 
-      const plan = planCoverMaintenance(RJCODE, { refreshAllCovers: true });
+      const plan = planCoverMaintenance(WORK_ID, { refreshAllCovers: true });
       expect(plan.upgradable).to.deep.equal(COVER_TYPES);
     });
   });
@@ -180,24 +180,24 @@ describe('cover maintenance', function () {
     it('skips works whose covers need nothing', async function () {
       writeCovers();
 
-      expect(await maintainCovers(WORK_ID, RJCODE)).to.equal('skipped');
-      expect(await maintainCovers(WORK_ID, RJCODE, { dryRun: true })).to.equal('skipped');
+      expect(await maintainCovers(WORK_ID)).to.equal('skipped');
+      expect(await maintainCovers(WORK_ID, { dryRun: true })).to.equal('skipped');
     });
 
     it('reports what it would do in dry run without touching anything', async function () {
       writeCovers(['main']);
 
-      expect(await maintainCovers(WORK_ID, RJCODE, { dryRun: true })).to.equal('pending');
+      expect(await maintainCovers(WORK_ID, { dryRun: true })).to.equal('pending');
       expect(fs.existsSync(coverFilePath(RJCODE, 'sam'))).to.equal(false);
     });
 
     it('regenerates stale covers from main without using the network', async function () {
       writeCovers();
-      await generateCoverFromMain(RJCODE, 'sam');
+      await generateCoverFromMain(WORK_ID, 'sam');
       fs.writeFileSync(coverFilePath(RJCODE, 'main'), await makeJpeg(0x00ff00ff, 480, 360));
       stubDownload(null);
 
-      expect(await maintainCovers(WORK_ID, RJCODE)).to.equal('repaired');
+      expect(await maintainCovers(WORK_ID)).to.equal('repaired');
 
       const image = await Jimp.read(coverFilePath(RJCODE, 'sam'));
       expect(`${image.bitmap.width}x${image.bitmap.height}`).to.equal('100x75');
@@ -205,10 +205,10 @@ describe('cover maintenance', function () {
 
     it('keeps the generated cover and remembers the attempt when the upgrade fails', async function () {
       writeCovers();
-      await generateCoverFromMain(RJCODE, 'sam');
+      await generateCoverFromMain(WORK_ID, 'sam');
       stubDownload(null);
 
-      expect(await maintainCovers(WORK_ID, RJCODE)).to.equal('skipped');
+      expect(await maintainCovers(WORK_ID)).to.equal('skipped');
 
       const origin = readCoverOrigin(coverFilePath(RJCODE, 'sam'));
       expect(origin.tried).to.be.a('number');
@@ -217,7 +217,7 @@ describe('cover maintenance', function () {
 
     it('replaces the generated cover with the DLsite original once the download works', async function () {
       writeCovers();
-      await generateCoverFromMain(RJCODE, 'sam');
+      await generateCoverFromMain(WORK_ID, 'sam');
       // 上次尝试已经是 8 天前
       await markCoverAsGenerated(coverFilePath(RJCODE, 'sam'), Object.assign(
         {},
@@ -226,26 +226,26 @@ describe('cover maintenance', function () {
       ));
       stubDownload(samJpeg);
 
-      expect(await maintainCovers(WORK_ID, RJCODE)).to.equal('upgraded');
+      expect(await maintainCovers(WORK_ID)).to.equal('upgraded');
 
       expect(fs.readFileSync(coverFilePath(RJCODE, 'sam'))).to.deep.equal(samJpeg);
       // 换成原图后标记消失，之后不会再被当成降级图
       expect(readCoverOrigin(coverFilePath(RJCODE, 'sam'))).to.equal(null);
-      expect(planCoverMaintenance(RJCODE).upgradable).to.deep.equal([]);
+      expect(planCoverMaintenance(WORK_ID).upgradable).to.deep.equal([]);
     });
 
     it('reports failure when refreshAllCovers could not download', async function () {
       writeCovers();
       stubDownload(null);
 
-      expect(await maintainCovers(WORK_ID, RJCODE, { refreshAllCovers: true })).to.equal('failed');
+      expect(await maintainCovers(WORK_ID, { refreshAllCovers: true })).to.equal('failed');
     });
 
     it('upgradeCovers keeps working through a download of several types', async function () {
       writeCovers(['main']);
       stubDownload(samJpeg);
 
-      const { upgraded, failed } = await upgradeCovers(WORK_ID, RJCODE, ['sam', '240x240']);
+      const { upgraded, failed } = await upgradeCovers(WORK_ID, ['sam', '240x240']);
 
       expect(upgraded).to.equal(2);
       expect(failed).to.equal(0);

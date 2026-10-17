@@ -2,21 +2,17 @@ const htmlparser = require('htmlparser2');
 
 const axios = require('./axios');
 const { nameToUUID } = require('./utils');
+const { formatRJLabel } = require('../utils/workId');
 
 /**
  * Scrapes work metadata from public HVDB page HTML.
  * @param {number} id Work id.
  */
 const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
-  let rjcode ;
-  if (id>=1000000) {
-    rjcode = (`00000000${id}`).slice(-8);
-  } else {
-    rjcode = (`000000${id}`).slice(-6);
-  }
+  const rjLabel = formatRJLabel(id);
   const url = `https://hvdb.me/Dashboard/WorkDetails/${id}`;
 
-  console.log(`[RJ${rjcode}] 从 HVDB 抓取元数据...`);
+  console.log(`[${rjLabel}] 从 HVDB 抓取元数据...`);
   axios.retryGet(url, { retry: {} })
     .then(response => {
       console.log('res HVDB')
@@ -83,7 +79,7 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
       if (work.tags.length === 0 && work.vas.length === 0) {
         reject(new Error('Couldn\'t parse data from HVDB work page.'));
       } else {
-        console.log(`[RJ${rjcode}] 成功从 HVDB 抓取元数据...`);
+        console.log(`[${rjLabel}] 成功从 HVDB 抓取元数据...`);
         resolve(work);
       }
     })

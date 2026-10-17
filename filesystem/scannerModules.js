@@ -13,13 +13,13 @@ const {
   removeTemporaryCoverFiles,
   getTrackList,
   COVER_TYPES,
-  formatRJCode,
   coverFilePath,
   isUsableCoverFile,
   readCoverOrigin,
   markCoverAsGenerated,
   getFileStamp
 } = require('./utils');
+const { formatRJLabel } = require('../utils/workId');
 const { nameToUUID } = require('../scraper/utils');
 
 const { config } = require('../config');
@@ -32,14 +32,16 @@ const failedTasks = [];
 const mainLogs = [];
 const results = [];
 
-const addTask = (rjcode) => tasks.push({
-  rjcode,
+const getTask = (workId) => tasks.find(task => task.workId === Number(workId));
+
+const addTask = (workId) => tasks.push({
+  workId: Number(workId),
   result: null,
   logs: []
 });
 
-const removeTask = (rjcode) => {
-  const index = tasks.findIndex(task => task.rjcode === rjcode);
+const removeTask = (workId) => {
+  const index = tasks.findIndex(task => task.workId === Number(workId));
   // 任务已经被移除时直接返回，否则 splice(-1, 1) 会误删列表里的最后一个任务
   if (index === -1) return;
 
@@ -62,8 +64,8 @@ const removeTask = (rjcode) => {
   }
 };
 
-const addLogForTask = (rjcode, log) => {
-  const task = tasks.find(task => task.rjcode === rjcode);
+const addLogForTask = (workId, log) => {
+  const task = getTask(workId);
   // 任务还没创建或已经被移除时，日志退回主日志，不能在这里抛错
   if (!task) return false;
 
@@ -78,9 +80,9 @@ const addLogForTask = (rjcode, log) => {
   return true;
 };
 
-const addResult = (rjcode, result, count) => {
+const addResult = (workId, result, count) => {
   results.push({
-    rjcode,
+    workId: Number(workId),
     result,
     count
   });
@@ -110,14 +112,14 @@ const emitMainLog = (message, level = 'info', truncate = 0) => {
   });
 };
 
-const emitTaskLog = (message, rjcode, level = 'info', truncate = 0) => {
+const emitTaskLog = (message, workId, level = 'info', truncate = 0) => {
   console.log(message);
   const log = {
     level: level,
     message: message.substring(truncate)
   };
 
-  if (!addLogForTask(rjcode, log)) addMainLog(log);
+  if (!addLogForTask(workId, log)) addMainLog(log);
 }
 
 process.on('message', (m) => {
@@ -172,13 +174,8 @@ const uniqueArr = (arr) => {
  * @param {string} tagLanguage 标签语言，'ja-jp', 'zh-tw' or 'zh-cn'，默认'zh-cn'
  */
 const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
-  let rjcode ;
-  if (id>=1000000) {
-    rjcode = (`00000000${id}`).slice(-8);
-  } else {
-    rjcode = (`000000${id}`).slice(-6);
-  }
-  emitTaskLog(`[RJ${rjcode}] 从 DLSite 抓取元数据...`, rjcode);
+  const rjLabel = formatRJLabel(id);
+  emitTaskLog(`[${rjLabel}] 从 DLSite 抓取元数据...`, id);
   
   return scrapeWorkMetadataFromDLsite(id, tagLanguage)
     .then((metadata) => {
@@ -203,7 +200,7 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
       })
     })
     .then((metadata) => {
-      emitTaskLog(`[RJ${rjcode}] 元数据抓取成功，准备添加到数据库...`, rjcode);
+      emitTaskLog(`[${rjLabel}] 元数据抓取成功，准备添加到数据库...`, id);
       
       metadata.rootFolderName = rootFolderName;
       metadata.dir = dir;
@@ -211,18 +208,18 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
 
       return db.insertWorkMetadata(metadata)
         .then(() => {
-          emitTaskLog(`[RJ${rjcode}] 元数据成功添加到数据库.`, rjcode);
+          emitTaskLog(`[${rjLabel}] 元数据成功添加到数据库.`, id);
           
           return 'added';
         })
         .catch((err) => {
-          emitTaskLog(`[RJ${rjcode}] 在插入元数据过程中出错: ${err.message}`, rjcode, 'error');
+          emitTaskLog(`[${rjLabel}] 在插入元数据过程中出错: ${err.message}`, id, 'error');
           
           return 'failed';
         });
     })
     .catch((err) => {
-      emitTaskLog(`[RJ${rjcode}] 在抓取元数据过程中出错: ${err.message}`, rjcode, 'error');
+      emitTaskLog(`[${rjLabel}] 在抓取元数据过程中出错: ${err.message}`, id, 'error');
       
       return 'failed';
     });
@@ -235,35 +232,35 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
  * @returns {Promise<{succeeded: Array, failed: Array}>} 各类型各自的下载结果
  */
 const getCoverImage = async (id, types) => {
-  const rjcode = formatRJCode(id);
+  const rjLabel = formatRJLabel(id);
 
   // DLsite 的图片按每 1000 个 RJ 号分目录存放
   const id2 = (id % 1000 === 0) ? id : parseInt(id / 1000, 10) * 1000 + 1000;
-  const rjcode2 = formatRJCode(id2);
+  const rjLabel2 = formatRJLabel(id2);
 
-  emitTaskLog(`[RJ${rjcode}] 从 DLsite 下载封面...`, rjcode);
+  emitTaskLog(`[${rjLabel}] 从 DLsite 下载封面...`, id);
 
   const succeeded = [];
   const failed = [];
 
   for (const type of types) {
-    let url = `https://img.dlsite.jp/modpub/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_${type}.jpg`;
+    let url = `https://img.dlsite.jp/modpub/images2/work/doujin/${rjLabel2}/${rjLabel}_img_${type}.jpg`;
     // 240x240 / 360x360 走 resize 线，其余的（main、sam、sam@2x ...）都是原路径
     if (type === '240x240' || type === '360x360') {
-      url = `https://img.dlsite.jp/resize/images2/work/doujin/RJ${rjcode2}/RJ${rjcode}_img_main_${type}.jpg`;
+      url = `https://img.dlsite.jp/resize/images2/work/doujin/${rjLabel2}/${rjLabel}_img_main_${type}.jpg`;
     }
 
     try {
       const imageRes = await axios.retryGet(url, { responseType: "stream", retry: {} });
-      await saveCoverImageToDisk(imageRes.data, rjcode, type);
+      await saveCoverImageToDisk(imageRes.data, id, type);
 
-      emitTaskLog(`[RJ${rjcode}] 封面 RJ${rjcode}_img_${type}.jpg 下载成功.`, rjcode);
+      emitTaskLog(`[${rjLabel}] 封面 ${rjLabel}_img_${type}.jpg 下载成功.`, id);
       succeeded.push(type);
     } catch (err) {
       // 非 2xx 时响应体没有被消费，主动释放，避免批量扫描时一直占着 socket
       if (err.response && err.response.data && err.response.data.destroy) err.response.data.destroy();
 
-      emitTaskLog(`[RJ${rjcode}] 在下载封面 RJ${rjcode}_img_${type}.jpg 过程中出错: ${err.message}`, rjcode, 'error');
+      emitTaskLog(`[${rjLabel}] 在下载封面 ${rjLabel}_img_${type}.jpg 过程中出错: ${err.message}`, id, 'error');
       failed.push(type);
     }
   }
@@ -285,16 +282,16 @@ const DERIVED_COVER_SPECS = {
 
 /**
  * 由 main 生成一张缩略图（先写 .part 再改名）。
- * @param {String} rjcode Work RJ code
+ * @param {Number|String} id work id
  * @param {String} type '240x240' or 'sam'
  * @returns {Promise<Boolean>} 是否生成成功
  */
-const generateCoverFromMain = async (rjcode, type) => {
+const generateCoverFromMain = async (id, type) => {
   const spec = DERIVED_COVER_SPECS[type];
   if (!spec) return false;
 
-  const mainPath = coverFilePath(rjcode, 'main');
-  const outputPath = coverFilePath(rjcode, type);
+  const mainPath = coverFilePath(id, 'main');
+  const outputPath = coverFilePath(id, type);
   const tempPath = `${outputPath}.part`;
 
   try {
@@ -307,13 +304,13 @@ const generateCoverFromMain = async (rjcode, type) => {
     await fs.promises.rename(tempPath, outputPath);
 
     // 记下这张图是本地生成的，以后才有机会换成 DLsite 的原图
-    await markGeneratedCover(rjcode, type);
+    await markGeneratedCover(id, type);
 
-    emitTaskLog(`[RJ${rjcode}] 已由 main 生成 ${type} 缩略图.`, rjcode);
+    emitTaskLog(`[${formatRJLabel(id)}] 已由 main 生成 ${type} 缩略图.`, id);
     return true;
   } catch (err) {
     await fs.promises.unlink(tempPath).catch(() => {});
-    emitTaskLog(`[RJ${rjcode}] 由 main 生成 ${type} 缩略图失败: ${err.message}`, rjcode, 'error');
+    emitTaskLog(`[${formatRJLabel(id)}] 由 main 生成 ${type} 缩略图失败: ${err.message}`, id, 'error');
     return false;
   }
 };
@@ -321,11 +318,11 @@ const generateCoverFromMain = async (rjcode, type) => {
 /**
  * 给刚生成的封面写来源标记（顺带记下 main 的 size/mtime，main 换了就知道该重新生成）。
  */
-const markGeneratedCover = async (rjcode, type) => {
-  const stamp = getFileStamp(coverFilePath(rjcode, 'main'));
+const markGeneratedCover = async (id, type) => {
+  const stamp = getFileStamp(coverFilePath(id, 'main'));
 
   try {
-    await markCoverAsGenerated(coverFilePath(rjcode, type), {
+    await markCoverAsGenerated(coverFilePath(id, type), {
       from: 'main',
       mainSize: stamp ? stamp.size : null,
       mainMtime: stamp ? stamp.mtime : null,
@@ -334,28 +331,28 @@ const markGeneratedCover = async (rjcode, type) => {
     });
   } catch (err) {
     // 标记只是「以后能升级」的依据，写不上不该让整张图白生成
-    emitTaskLog(`[RJ${rjcode}] 无法写入 ${type} 的来源标记（将不会自动升级）: ${err.message}`, rjcode, 'error');
+    emitTaskLog(`[${formatRJLabel(id)}] 无法写入 ${type} 的来源标记（将不会自动升级）: ${err.message}`, id, 'error');
   }
 };
 
 /**
  * 记下一次失败的升级尝试（保留原本的生成时间），按间隔退避之后再试。
  */
-const markCoverUpgradeAttempt = async (rjcode, type, origin) => {
+const markCoverUpgradeAttempt = async (id, type, origin) => {
   try {
-    await markCoverAsGenerated(coverFilePath(rjcode, type), Object.assign({}, origin, {
+    await markCoverAsGenerated(coverFilePath(id, type), Object.assign({}, origin, {
       tried: Date.now()
     }));
   } catch (err) {
-    emitTaskLog(`[RJ${rjcode}] 无法记录 ${type} 的升级尝试: ${err.message}`, rjcode, 'error');
+    emitTaskLog(`[${formatRJLabel(id)}] 无法记录 ${type} 的升级尝试: ${err.message}`, id, 'error');
   }
 };
 
 /**
  * 本地生成的缩略图是否已经过期（main 被换过）。
  */
-const isGeneratedCoverStale = (rjcode, origin) => {
-  const stamp = getFileStamp(coverFilePath(rjcode, 'main'));
+const isGeneratedCoverStale = (id, origin) => {
+  const stamp = getFileStamp(coverFilePath(id, 'main'));
 
   if (!stamp) return false;
   return stamp.size !== origin.mainSize || stamp.mtime !== origin.mainMtime;
@@ -376,15 +373,15 @@ const isCoverUpgradeDue = (type, origin) => {
 
 /**
  * 检查一部作品的封面，得到需要做的维护动作。
- * @param {String} rjcode
+ * @param {Number|String} id work id
  * @param {Object} options { refreshAllCovers }
  * @returns {{missing: Array, stale: Array, upgradable: Array}}
  */
-const planCoverMaintenance = (rjcode, options = {}) => {
+const planCoverMaintenance = (id, options = {}) => {
   const plan = { missing: [], stale: [], upgradable: [] };
 
   for (const type of COVER_TYPES) {
-    const filePath = coverFilePath(rjcode, type);
+    const filePath = coverFilePath(id, type);
 
     if (!isUsableCoverFile(filePath)) {
       plan.missing.push(type);
@@ -402,7 +399,7 @@ const planCoverMaintenance = (rjcode, options = {}) => {
     const origin = readCoverOrigin(filePath);
     if (!origin) continue; // DLsite 原图
 
-    if (isGeneratedCoverStale(rjcode, origin)) plan.stale.push(type);
+    if (isGeneratedCoverStale(id, origin)) plan.stale.push(type);
     else if (isCoverUpgradeDue(type, origin)) plan.upgradable.push(type);
   }
 
@@ -423,19 +420,19 @@ const describeCoverPlan = (plan) => {
  * 下载成功会直接覆盖原文件（标记随之消失）；失败则记下这次尝试，按间隔退避。
  * @returns {Promise<{upgraded: Number, failed: Number}>}
  */
-const upgradeCovers = async (id, rjcode, types) => {
+const upgradeCovers = async (id, types) => {
   let upgraded = 0;
   let failed = 0;
 
   for (const type of types) {
-    const origin = readCoverOrigin(coverFilePath(rjcode, type));
+    const origin = readCoverOrigin(coverFilePath(id, type));
     const results = await getCoverImage(id, [type]);
 
     if (results.succeeded.includes(type)) {
       upgraded += 1;
     } else {
       // 没换成原图：记录尝试时间后按间隔再试
-      if (origin) await markCoverUpgradeAttempt(rjcode, type, origin);
+      if (origin) await markCoverUpgradeAttempt(id, type, origin);
       failed += 1;
     }
   }
@@ -445,15 +442,15 @@ const upgradeCovers = async (id, rjcode, types) => {
 
 /**
  * 把仍然缺失的缩略图用 main 就地补齐（调用前需确保 main 可用）。
- * @param {String} rjcode Work RJ code
+ * @param {Number|String} id work id
  * @param {Array} types 只处理这些类型
  */
-const generateMissingThumbnails = async (rjcode, types) => {
+const generateMissingThumbnails = async (id, types) => {
   for (const type of types) {
     if (!DERIVED_COVER_SPECS[type]) continue;
-    if (isUsableCoverFile(coverFilePath(rjcode, type))) continue;
+    if (isUsableCoverFile(coverFilePath(id, type))) continue;
 
-    await generateCoverFromMain(rjcode, type);
+    await generateCoverFromMain(id, type);
   }
 };
 
@@ -461,12 +458,12 @@ const generateMissingThumbnails = async (rjcode, types) => {
  * 下载一部新作品的封面：main 是必需资源，缩略图拿不到时由 main 本地生成。
  * @returns {Promise<'added'|'failed'>}
  */
-const fetchCover = async (id, rjcode) => {
+const fetchCover = async (id) => {
   await getCoverImage(id, COVER_TYPES);
 
-  if (!isUsableCoverFile(coverFilePath(rjcode, 'main'))) return 'failed';
+  if (!isUsableCoverFile(coverFilePath(id, 'main'))) return 'failed';
 
-  await generateMissingThumbnails(rjcode, COVER_TYPES);
+  await generateMissingThumbnails(id, COVER_TYPES);
 
   return 'added';
 };
@@ -479,19 +476,19 @@ const fetchCover = async (id, rjcode) => {
  * - 最后仍然缺的缩略图（比如 sam 下载不到）由 main 生成兜底
  * @returns {Promise<'repaired'|'failed'>}
  */
-const repairCover = async (id, rjcode, missingTypes) => {
+const repairCover = async (id, missingTypes) => {
   if (missingTypes.includes('main')) {
-    emitTaskLog(`[RJ${rjcode}] 封面图片缺失或损坏，重新下载: ${missingTypes.join(', ')}`, rjcode);
+    emitTaskLog(`[${formatRJLabel(id)}] 封面图片缺失或损坏，重新下载: ${missingTypes.join(', ')}`, id);
     await getCoverImage(id, missingTypes);
 
-    if (!isUsableCoverFile(coverFilePath(rjcode, 'main'))) return 'failed';
+    if (!isUsableCoverFile(coverFilePath(id, 'main'))) return 'failed';
   } else if (missingTypes.includes('sam')) {
-    emitTaskLog(`[RJ${rjcode}] sam 缩略图缺失，从 DLsite 重新获取...`, rjcode);
+    emitTaskLog(`[${formatRJLabel(id)}] sam 缩略图缺失，从 DLsite 重新获取...`, id);
     await getCoverImage(id, ['sam']);
   }
 
   // 走到这里 main 一定可用：仍然缺的缩略图就地生成（生成失败也只是少一张小图）
-  await generateMissingThumbnails(rjcode, missingTypes);
+  await generateMissingThumbnails(id, missingTypes);
 
   return 'repaired';
 };
@@ -499,34 +496,33 @@ const repairCover = async (id, rjcode, missingTypes) => {
 /**
  * 维护一部作品的封面：补缺失的、重新生成过期的、把本地生成的降级图换成 DLsite 原图。
  * @param {number} id work id
- * @param {String} rjcode
  * @param {Object} options { dryRun, refreshAllCovers }
  * @returns {Promise<'repaired'|'upgraded'|'skipped'|'pending'|'failed'>}
  */
-const maintainCovers = async (id, rjcode, options = {}) => {
-  const plan = planCoverMaintenance(rjcode, options);
+const maintainCovers = async (id, options = {}) => {
+  const plan = planCoverMaintenance(id, options);
 
   if (!plan.missing.length && !plan.stale.length && !plan.upgradable.length) return 'skipped';
 
   if (options.dryRun) {
-    emitMainLog(`[RJ${rjcode}] 待处理: ${describeCoverPlan(plan)}`, 'info', 0);
+    emitMainLog(`[${formatRJLabel(id)}] 待处理: ${describeCoverPlan(plan)}`, 'info', 0);
     return 'pending';
   }
 
-  addTask(rjcode);
+  addTask(id);
 
   let repaired = false;
 
   if (plan.missing.length) {
-    const result = await repairCover(id, rjcode, plan.missing);
+    const result = await repairCover(id, plan.missing);
     if (result === 'failed') return 'failed';
     repaired = true;
   }
 
   if (plan.stale.length) {
-    emitTaskLog(`[RJ${rjcode}] main 已更新，重新生成缩略图: ${plan.stale.join(', ')}`, rjcode);
+    emitTaskLog(`[${formatRJLabel(id)}] main 已更新，重新生成缩略图: ${plan.stale.join(', ')}`, id);
     for (const type of plan.stale) {
-      await generateCoverFromMain(rjcode, type);
+      await generateCoverFromMain(id, type);
     }
     repaired = true;
   }
@@ -536,9 +532,9 @@ const maintainCovers = async (id, rjcode, options = {}) => {
 
   if (plan.upgradable.length) {
     const reason = options.refreshAllCovers ? '按 --all 全量重取' : '本地生成的封面到了升级时间';
-    emitTaskLog(`[RJ${rjcode}] ${reason}，尝试从 DLsite 取原图: ${plan.upgradable.join(', ')}`, rjcode);
+    emitTaskLog(`[${formatRJLabel(id)}] ${reason}，尝试从 DLsite 取原图: ${plan.upgradable.join(', ')}`, id);
 
-    ({ upgraded, failed } = await upgradeCovers(id, rjcode, plan.upgradable));
+    ({ upgraded, failed } = await upgradeCovers(id, plan.upgradable));
   }
 
   if (repaired) return 'repaired';
@@ -562,17 +558,16 @@ const processFolder = async (folder, options = {}) => {
     .count()
     .first();
 
-  const rjcode = formatRJCode(folder.id);
   const count = res['count(*)'];
 
-  if (count) return await maintainCovers(folder.id, rjcode, options); // 已写入元数据，只维护封面
+  if (count) return await maintainCovers(folder.id, options); // 已写入元数据，只维护封面
 
   // 只维护封面时不收录新作品
   if (options.coversOnly) return 'skipped';
   else {
     console.log(` * 发现新文件夹: "${folder.absolutePath}"`);
-    addTask(rjcode);
-    addLogForTask(rjcode, {
+    addTask(folder.id);
+    addLogForTask(folder.id, {
       level: 'info',
       message: `发现新文件夹: "${folder.absolutePath}"`
     });
@@ -580,7 +575,7 @@ const processFolder = async (folder, options = {}) => {
     const result = await getMetadata(folder.id, folder.rootFolderName, folder.relativePath, config.tagLanguage);
 
     if (result === 'failed') return 'failed';
-    return await fetchCover(folder.id, rjcode);
+    return await fetchCover(folder.id);
   }
 };
 
@@ -607,16 +602,11 @@ const performCleanup = async () => {
     if (!rootFolder || !fs.existsSync(path.join(rootFolder.path, work.dir))) {
       db.removeWork(work.id, trxProvider)
         .then((result) => {
-          let rjcode ;
-          if (work.id>=1000000) {
-            rjcode = (`00000000${work.id}`).slice(-8);
-          } else {
-            rjcode = (`000000${work.id}`).slice(-6);
-          }
-          deleteCoverImageFromDisk(rjcode)    
+          const rjLabel = formatRJLabel(work.id);
+          deleteCoverImageFromDisk(work.id)    
             .catch((err) => {
               if (err && err.code !== 'ENOENT') { 
-                emitMainLog(`[RJ${rjcode}] 在删除封面过程中出错: ${err.message}`, 'error', 0);
+                emitMainLog(`[${rjLabel}] 在删除封面过程中出错: ${err.message}`, 'error', 0);
               }
             })
             .then(() => resolve(result));
@@ -664,31 +654,31 @@ const handleDeduplication = (folderList) => {
   if (duplicateNum > 0) {
     emitMainLog(` ! 发现 ${duplicateNum} 个重复的音声文件夹.`, 'info', 3);
     Object.keys(duplicate).forEach(key => {
-      const rjcode = formatRJCode(key);
-      emitMainLog(` -> [RJ${rjcode}] 存在多个文件夹.`, 'info', 4);
+      emitMainLog(` -> [${formatRJLabel(key)}] 存在多个文件夹.`, 'info', 4);
     });
   }
   return { uniqueFolderList: uniqueList, duplicateNum };
 };
 
 const processSingleFolder = async (folder, counts, options = {}) => {
-  const rjcode = formatRJCode(folder.id);
+  const workId = folder.id;
+  const rjLabel = formatRJLabel(workId);
   let result;
 
   try {
     result = await processFolderLimited(folder, options);
   } catch (err) {
     // 单个作品出错不能让整场扫描挂掉，记成失败继续跑
-    emitTaskLog(`[RJ${rjcode}] 处理出错: ${err.message}`, rjcode, 'error');
+    emitTaskLog(`[${rjLabel}] 处理出错: ${err.message}`, workId, 'error');
     result = 'failed';
   }
 
   counts[result]++;
 
   // 任务无论如何都要从「处理中」摘掉，否则失败的路径会把它一直挂在那里
-  const task = tasks.find(t => t.rjcode === rjcode);
+  const task = getTask(workId);
   if (task) task.result = result;
-  removeTask(rjcode);
+  removeTask(workId);
 
   if (result === 'skipped' || result === 'pending') return;
 
@@ -700,9 +690,9 @@ const processSingleFolder = async (folder, counts, options = {}) => {
     failed: '处理失败'
   }[result];
 
-  console[isSuccess ? 'log' : 'error'](`[RJ${rjcode}] ${statusText}! ${result.toUpperCase()}: ${counts[result]}`);
+  console[isSuccess ? 'log' : 'error'](`[${rjLabel}] ${statusText}! ${result.toUpperCase()}: ${counts[result]}`);
 
-  addResult(rjcode, result, counts[result]);
+  addResult(workId, result, counts[result]);
 };
 
 const finalizeScan = (counts, options = {}) => {
@@ -765,25 +755,20 @@ const performScan = async (options = {}) => {
 const updateMetadata = (id, options = {}) => {
   let scrapeProcessor = () => scrapeWorkMetadataFromDLsite(id, config.tagLanguage);
 
-  let rjcode ;
-  if (id>=1000000) {
-    rjcode = (`00000000${id}`).slice(-8);
-  } else {
-    rjcode = (`000000${id}`).slice(-6);
-  }
-  addTask(rjcode);
+  const rjLabel = formatRJLabel(id);
+  addTask(id);
   return scrapeProcessor()
     .then((metadata) => {
-      emitTaskLog(`[RJ${rjcode}] 元数据抓取成功，准备更新元数据...`, rjcode);
+      emitTaskLog(`[${rjLabel}] 元数据抓取成功，准备更新元数据...`, id);
       metadata.id = id;
       return db.updateWorkMetadata(metadata, options)
         .then(() => {
-          emitTaskLog(`[RJ${rjcode}] 元数据更新成功`, rjcode);
+          emitTaskLog(`[${rjLabel}] 元数据更新成功`, id);
           return 'updated';
         });
     })
     .catch((err) => {
-      emitTaskLog(`[RJ${rjcode}] 在抓取元数据过程中出错: ${err}`, rjcode, 'error');
+      emitTaskLog(`[${rjLabel}] 在抓取元数据过程中出错: ${err}`, id, 'error');
       return 'failed';
     });
 };
@@ -829,21 +814,16 @@ const refreshWorks = async (query, idColumnName, processor) => {
 
     const promises = works.map((work) => {
       const workid = work[idColumnName];
-      let rjcode ;
-      if (workid>=1000000) {
-        rjcode = (`00000000${workid}`).slice(-8);
-      } else {
-        rjcode = (`000000${workid}`).slice(-6);
-      }
       return processor(workid)
         .then((result) => {
           result === 'failed' ? counts['failed'] += 1 : counts['updated'] += 1;
-          tasks.find(task => task.rjcode === rjcode).result = result;
-          removeTask(rjcode);
+          const task = getTask(workid);
+          if (task) task.result = result;
+          removeTask(workid);
           if (result === 'failed') {
-            addResult(rjcode, 'failed', counts.failed);
+            addResult(workid, 'failed', counts.failed);
           } else {
-            addResult(rjcode, 'updated', counts.updated);
+            addResult(workid, 'updated', counts.updated);
           }
       })
     });

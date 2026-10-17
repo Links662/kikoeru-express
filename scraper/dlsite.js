@@ -3,6 +3,7 @@ const cheerio = require('cheerio');
 const axios = require('./axios');
 const { nameToUUID, hasLetter } = require('./utils');
 const scrapeWorkMetadataFromHVDB = require('./hvdb');
+const { formatRJLabel } = require('../utils/workId');
 
 /**
  * Scrapes static work metadata from public DLsite page HTML.
@@ -10,13 +11,8 @@ const scrapeWorkMetadataFromHVDB = require('./hvdb');
  * @param {String} language 标签语言，'ja-jp', 'zh-tw' or 'zh-cn'，默认'zh-cn'
  */
 const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolve, reject) => {
-  let rjcode ;
-  if (id>=1000000) {
-    rjcode = (`00000000${id}`).slice(-8);
-  } else {
-    rjcode = (`000000${id}`).slice(-6);
-  }
-  const url = `https://www.dlsite.com/maniax/work/=/product_id/RJ${rjcode}.html`;
+  const rjLabel = formatRJLabel(id);
+  const url = `https://www.dlsite.com/maniax/work/=/product_id/${rjLabel}.html`;
 
   const work = { id, tags: [], vas: [] };
   let AGE_RATINGS, VA, GENRE, RELEASE, SERIES, COOKIE_LOCALE;
@@ -176,16 +172,11 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
  * @param {number} id Work id.
  */
 const scrapeDynamicWorkMetadataFromDLsite = id => new Promise((resolve, reject) => {
-  let rjcode ;
-  if (id>=1000000) {
-    rjcode = (`00000000${id}`).slice(-8);
-  } else {
-    rjcode = (`000000${id}`).slice(-6);
-  }
-  const url = `https://www.dlsite.com/maniax-touch/product/info/ajax?product_id=RJ${rjcode}`;
+  const rjLabel = formatRJLabel(id);
+  const url = `https://www.dlsite.com/maniax-touch/product/info/ajax?product_id=${rjLabel}`;
 
   axios.retryGet(url, { retry: {} })
-    .then(response => response.data[`RJ${rjcode}`])
+    .then(response => response.data[rjLabel])
     .then((data) => {
       const work = {};
       work.dl_count = data.dl_count ? data.dl_count : "0"; // 售出数
@@ -197,7 +188,7 @@ const scrapeDynamicWorkMetadataFromDLsite = id => new Promise((resolve, reject) 
       if (data.rank.length) {
         work.rank = data.rank; // 成绩
       }
-      console.log(`[RJ${rjcode}] 成功从 DLSite 抓取Dynamic元数据...`);
+      console.log(`[${rjLabel}] 成功从 DLSite 抓取Dynamic元数据...`);
       resolve(work);
     })
     .catch((error) => {

@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { param, query, body} = require('express-validator');
 const db = require('../database/db');
-const { getTrackList, toTree, formatRJCode, coverFilePath, isUsableCoverFile } = require('../filesystem/utils');
+const { getTrackList, toTree, coverFilePath, isUsableCoverFile } = require('../filesystem/utils');
 const { config, getPageSize } = require('../config');
 const normalize = require('./utils/normalize')
 const { isValidRequest } = require('./utils/validate');
@@ -40,18 +40,17 @@ const COVER_TYPE_FALLBACK = {
 const NO_IMAGE_PATH = path.join(__dirname, '../static/no-image.jpg');
 
 router.get('/cover/:id',
-  param('id').isInt(),
+  param('id').isInt({ min: 1 }),
   (req, res, next) => {
     if(!isValidRequest(req, res)) return;
 
-    const rjcode = formatRJCode(req.params.id);
     const requestedType = String(req.query.type || 'main');
     const type = LEGACY_COVER_TYPE_MAP[requestedType] || requestedType;
     // 白名单：未知类型（包括用来拼路径的恶意片段）一律按 main 处理
     const candidates = Object.prototype.hasOwnProperty.call(COVER_TYPE_FALLBACK, type)
       ? [type].concat(COVER_TYPE_FALLBACK[type])
       : ['main'];
-    const filePaths = [...new Set(candidates)].map(candidate => coverFilePath(rjcode, candidate));
+    const filePaths = [...new Set(candidates)].map(candidate => coverFilePath(req.params.id, candidate));
 
     const sendFallback = (index) => {
       if (index >= filePaths.length) {

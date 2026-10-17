@@ -4,6 +4,7 @@ const recursiveReaddir = require('recursive-readdir');
 const { orderBy } = require('natural-orderby');
 const { joinFragments } = require('../routes/utils/url')
 const { config } = require('../config');
+const { formatRJLabel } = require('../utils/workId');
 
 /**
  * Returns list of playable tracks in a given folder. Track is an object
@@ -189,22 +190,11 @@ const COVER_TYPES = ['main', 'sam', '240x240'];
 const LEGACY_COVER_TYPES = ['360x360'];
 
 /**
- * 把 work id 格式化成 DLsite 的 RJ code.
- * @param {Number|String} id work id
- */
-const formatRJCode = (id) => {
-  const num = Number(id);
-  return num >= 1000000
-    ? (`00000000${num}`).slice(-8)
-    : (`000000${num}`).slice(-6);
-};
-
-/**
  * 封面文件的绝对路径.
- * @param {String} rjcode Work RJ code (zero-padded).
+ * @param {Number|String} id work id
  * @param {String} type 'main' or '240x240'
  */
-const coverFilePath = (rjcode, type) => path.join(config.coverFolderDir, `RJ${rjcode}_img_${type}.jpg`);
+const coverFilePath = (id, type) => path.join(config.coverFolderDir, `${formatRJLabel(id)}_img_${type}.jpg`);
 
 /**
  * 判断封面文件是否可用：存在、非空、且确实是 JPEG。
@@ -345,12 +335,12 @@ const getFileStamp = (filePath) => {
 
 /**
  * Deletes a work's cover image from disk.
- * @param {String} rjcode Work RJ code (zero-padded).
+ * @param {Number|String} id work id
  */
-const deleteCoverImageFromDisk = async (rjcode) => {
+const deleteCoverImageFromDisk = async (id) => {
   const types = [...COVER_TYPES, ...LEGACY_COVER_TYPES];
   const results = await Promise.allSettled(
-    types.map(type => fs.promises.unlink(coverFilePath(rjcode, type))),
+    types.map(type => fs.promises.unlink(coverFilePath(id, type))),
   );
 
   // 文件本来就不存在（ENOENT）是正常情况，其他错误才交给调用方处理
@@ -365,11 +355,11 @@ const deleteCoverImageFromDisk = async (rjcode) => {
  * 改名之前先校验一遍：DLsite 被拦截时可能返回 200 + 一个 HTML 错误页，
  * 校验不过就直接失败，不会覆盖掉已经有用的封面。
  * @param {ReadableStream} stream Image data stream.
- * @param {String} rjcode Work RJ code (zero-padded).
+ * @param {Number|String} id work id
  * @param {String} type img type: 'main' or '240x240'.
  */
-const saveCoverImageToDisk = (stream, rjcode, type) => new Promise((resolve, reject) => {
-  const finalPath = coverFilePath(rjcode, type);
+const saveCoverImageToDisk = (stream, id, type) => new Promise((resolve, reject) => {
+  const finalPath = coverFilePath(id, type);
   const tempPath = `${finalPath}.part`;
   const out = fs.createWriteStream(tempPath);
   let sourceEnded = false;
@@ -433,7 +423,6 @@ module.exports = {
   saveCoverImageToDisk,
   removeTemporaryCoverFiles,
   COVER_TYPES,
-  formatRJCode,
   coverFilePath,
   isUsableCoverFile,
   readCoverOrigin,

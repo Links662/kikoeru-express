@@ -18,7 +18,6 @@ const {
   removeTemporaryCoverFiles,
   isUsableCoverFile,
   coverFilePath,
-  formatRJCode,
   COVER_TYPES,
 } = require('../filesystem/utils');
 
@@ -103,11 +102,6 @@ describe('cover helpers', function () {
     config.coverFolderDir = originalCoverFolderDir;
     fs.rmSync(tempDir, { recursive: true, force: true });
     closeServers();
-  });
-
-  it('formats work ids into zero padded RJ codes', function () {
-    expect(formatRJCode(WORK_ID)).to.equal('300650');
-    expect(formatRJCode(1690443)).to.equal('01690443');
   });
 
   it('treats missing, empty and non-jpeg covers as unusable', function () {
