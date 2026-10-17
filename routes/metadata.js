@@ -122,9 +122,10 @@ router.get('/works',
     const sort = req.query.sort || 'desc';
     const offset = (currentPage - 1) * getPageSize();
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
+    const username = config.auth ? req.user.name : 'admin';
 
     try {
-      const baseQuery = () => db.getWorksBy({});
+      const baseQuery = () => db.getWorksBy({ username });
       const totalCount = await db.getWorksCount(1)
       let works;
 
@@ -272,9 +273,14 @@ router.get('/:fields/:id/works',
     const sort = req.query.sort || 'desc';
     const offset = (currentPage - 1) * getPageSize();
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
+    const username = config.auth ? req.user.name : 'admin';
 
     try {
-      const query = () => db.getWorksBy({id: req.params.id, field: req.params.field});
+      const query = () => db.getWorksBy({
+        id: req.params.id,
+        field: req.params.field,
+        username
+      });
       const totalCount = await query().count('id as count');
 
       let works = null;

@@ -254,9 +254,32 @@ const removeWork = async (id, trxProvider) => {
  * Returns list of works by circle, tag or VA.
  * @param {Number} id Which id to filter by.
  * @param {String} field Which field to filter by.
+ * @param {String} username Include this user's rating, progress and note.
  */
-const getWorksBy = ({ id, field } = {}) => {
+const getWorksBy = ({ id, field, username } = {}) => {
   let baseQuery = knex('staticMetadata').select('staticMetadata.*');
+
+  if (username) {
+    const userrate = knex('t_review')
+      .select([
+        'work_id',
+        'rating AS userRating',
+        'review_text',
+        'progress',
+        knex.raw("strftime('%Y-%m-%d %H:%M:%S', updated_at, 'localtime') AS updated_at")
+      ])
+      .where('user_name', username)
+      .as('userrate');
+
+    baseQuery = baseQuery
+      .leftJoin(userrate, 'userrate.work_id', 'staticMetadata.id')
+      .select([
+        'userrate.userRating',
+        'userrate.review_text',
+        'userrate.progress',
+        'userrate.updated_at'
+      ]);
+  }
 
   switch (field) {
     case 'circle':
@@ -294,13 +317,25 @@ const getWorksCount = async (cacheflag = 0) => {
  */
 const getWorksByKeyWord = ({keyword, username = 'admin'} = {}) => {
   const ratingSubQuery = knex('t_review')
-  .select(['t_review.work_id', 't_review.rating'])
+  .select([
+    't_review.work_id',
+    't_review.rating AS userRating',
+    't_review.review_text',
+    't_review.progress',
+    knex.raw("strftime('%Y-%m-%d %H:%M:%S', t_review.updated_at, 'localtime') AS updated_at")
+  ])
   .join('t_work', 't_work.id', 't_review.work_id')
   .where('t_review.user_name', username).as('userrate')
 
   const workid = keyword.match(/((R|r)(J|j))?(\d+)/) ? keyword.match(/((R|r)(J|j))?(\d+)/)[4] : '';
   if (workid) {
-    return knex('staticMetadata').select(['staticMetadata.*', 'userrate.rating AS userRating'])
+    return knex('staticMetadata').select([
+      'staticMetadata.*',
+      'userrate.userRating',
+      'userrate.review_text',
+      'userrate.progress',
+      'userrate.updated_at'
+    ])
       .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id')
       .where('id', '=', workid);
   }
@@ -315,7 +350,13 @@ const getWorksByKeyWord = ({keyword, username = 'admin'} = {}) => {
   ]);
 
 
-  return knex('staticMetadata').select(['staticMetadata.*', 'userrate.rating AS userRating'])
+  return knex('staticMetadata').select([
+    'staticMetadata.*',
+    'userrate.userRating',
+    'userrate.review_text',
+    'userrate.progress',
+    'userrate.updated_at'
+  ])
     .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id')
     .where('title', 'like', `%${keyword}%`)
     .orWhere('circle_id', 'in', circleIdQuery)
