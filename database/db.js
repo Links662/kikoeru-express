@@ -526,7 +526,7 @@ const deleteUserReview = (username, workid) => knex.transaction(trx => trx('t_re
 
 const getWorksWithReviews = async ({username = '', limit = 1000, offset = 0, orderBy = 'release', sortOption = 'desc', filter} = {}) => {
   let works = [];
-  const ratingSubQuery = knex('t_review')
+  const ratingSubQuery = () => knex('t_review')
     .select([
       'work_id',
       'rating AS userRating',
@@ -540,7 +540,7 @@ const getWorksWithReviews = async ({username = '', limit = 1000, offset = 0, ord
     .where('user_name', username)
     .as('userrate');
 
-  const baseQuery = knex('staticMetadata')
+  const baseQuery = () => knex('staticMetadata')
     .select([
       'staticMetadata.*',
       'userrate.userRating',
@@ -549,19 +549,24 @@ const getWorksWithReviews = async ({username = '', limit = 1000, offset = 0, ord
       'userrate.updated_at',
       'userrate.user_name'
     ])
-    .join(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id')
+    .join(ratingSubQuery(), 'userrate.work_id', 'staticMetadata.id')
     .modify(qb => {
       if (filter) {
         qb.where('userrate.progress', filter);
       }
     });
 
-  works = await baseQuery
+  const totalCountQuery = baseQuery()
+    .clearSelect()
+    .count({ count: 'staticMetadata.id' });
+  const totalCountResult = await totalCountQuery;
+  const totalCount = Number(totalCountResult[0].count) || 0;
+
+  works = await baseQuery()
     .orderBy(orderBy, sortOption)
-    .limit(limit + 1)
+    .limit(limit)
     .offset(offset);
-  const hasMore = works.length > limit;
-  return { works:works.slice(0, limit), hasMore };
+  return { works, totalCount };
 };
 
 const getMetadata = ({field = 'circle', id} = {}) => {
