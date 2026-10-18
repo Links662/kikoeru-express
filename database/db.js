@@ -101,10 +101,12 @@ const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
   }));
 
 /**
- * 更新音声的动态元数据
+ * 在现有事务内应用作品元数据更新。
+ * @param {Object} trx Knex transaction.
  * @param {Object} work Work object.
+ * @param {Object} options Update options.
  */
-const updateWorkMetadata = (work, options = {}) => knex.transaction(async (trx) => {
+const applyWorkMetadataUpdate = async (trx, work, options = {}) => {
   const dynamicUpdate = {};
   if (work.dl_count !== undefined) dynamicUpdate.dl_count = work.dl_count;
   if (work.price !== undefined) dynamicUpdate.price = work.price;
@@ -132,11 +134,14 @@ const updateWorkMetadata = (work, options = {}) => knex.transaction(async (trx) 
     }
   }
   if (options.includeTags || options.refreshAll) {
-    if (options.purgeTags) {
-      await trx('r_tag_work').where('work_id', work.id).del();
-    }
+    // Rebuild the work's tag list from the current scrape.
+    await trx('r_tag_work').where('work_id', work.id).del();
     for (const tag of work.tags) {
       await trx.raw('INSERT OR IGNORE INTO t_tag(id, name) VALUES (?, ?)', [tag.id, tag.name]);
+      await trx('t_tag')
+        .where('id', '=', tag.id)
+        .andWhere('name', '<>', tag.name)
+        .update({ name: tag.name });
       await trx.raw('INSERT OR IGNORE INTO r_tag_work(tag_id, work_id) VALUES (?, ?)', [tag.id, work.id]);
     }
   }
@@ -151,15 +156,36 @@ const updateWorkMetadata = (work, options = {}) => knex.transaction(async (trx) 
   }
 
   if (options.refreshAll) {
-    await trx('t_work')
-    .where('id', '=', work.id)
-    .update({
+    const workUpdate = {
       nsfw: work.nsfw,
       title: work.title,
       release: work.release,
-    });
+    };
+
+    if (work.circle && work.circle.id !== undefined && work.circle.id !== null && work.circle.name) {
+      await trx.raw('INSERT OR IGNORE INTO t_circle(id, name) VALUES (?, ?)', [
+        work.circle.id,
+        work.circle.name
+      ]);
+      await trx('t_circle')
+        .where('id', '=', work.circle.id)
+        .update({ name: work.circle.name });
+      workUpdate.circle_id = work.circle.id;
+    }
+
+    await trx('t_work')
+      .where('id', '=', work.id)
+      .update(workUpdate);
   }
-});
+};
+
+/**
+ * 更新音声的动态元数据。
+ * @param {Object} work Work object.
+ */
+const updateWorkMetadata = (work, options = {}) => knex.transaction(
+  trx => applyWorkMetadataUpdate(trx, work, options)
+);
 
 const updateWorkSubtitle = (id, subtitle) => knex('t_work')
   .where('id', '=', id)
@@ -733,7 +759,8 @@ const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) 
 })
 
 module.exports = {
-  knex, applyWorkFilters, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksByKeyWord, updateWorkMetadata,
+  knex, applyWorkFilters, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksByKeyWord,
+  applyWorkMetadataUpdate, updateWorkMetadata,
   updateWorkSubtitle,
   getLabels, getMetadata, getFavourites, setFavourite,
   getRecentWorkIds,
