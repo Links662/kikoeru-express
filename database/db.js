@@ -295,6 +295,7 @@ const removeWork = async (id, trxProvider) => {
     await trx('r_tag_work').del().where('work_id', '=', id);
     await trx('r_va_work').del().where('work_id', '=', id);
     await trx('t_review').del().where('work_id', '=', id);
+    await trx('t_history').del().where('work_id', '=', id);
     await trx('t_work').del().where('id', '=', id);
     await cleanupOrphans(
       trxProvider,
