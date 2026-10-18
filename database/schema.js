@@ -1,6 +1,6 @@
 const { knex } = require('./db');
 
-const dbVersion = '20261016';
+const dbVersion = '20261018';
 
 const createCoreTables = async () => {
   const exists = await knex.schema.hasTable('t_circle');
@@ -21,6 +21,7 @@ const createCoreTables = async () => {
       table.string('title').notNullable();
       table.integer('circle_id').notNullable();
       table.boolean('nsfw');
+      table.boolean('subtitle').notNullable().defaultTo(false);
       table.string('release');
       table.integer('dl_count');
       table.integer('price');
@@ -103,7 +104,7 @@ const createView = async () => {
     .select(
       'w.id', 'w.title', 'w.circle_id',
       knex.raw("json_object('id', w.circle_id, 'name', c.name) AS circleObj"),
-      'w.nsfw', 'w.release', 'w.dl_count', 'w.price', 'w.review_count', 'w.rate_count',
+      'w.nsfw', 'w.subtitle', 'w.release', 'w.dl_count', 'w.price', 'w.review_count', 'w.rate_count',
       'w.rate_average_2dp', 'w.rate_count_detail', 'w.rank', 'w.insert_time',
       knex.raw(`(
         SELECT json_object('vas', json_group_array(json_object('id', v.id, 'name', v.name)))

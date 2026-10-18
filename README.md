@@ -14,6 +14,7 @@
 - 支持历史记录功能
 - 收藏社团 / 标签 / 声优，收藏数据按用户隔离
 - 封面维护：补齐缺失封面、重建过期缩略图、把本地生成的降级图升级为 DLsite 原图
+- 字幕状态：按作品字段 `subtitle` 展示，支持后台重新扫描 LRC
 
 ## 安装
 
@@ -78,7 +79,6 @@ docker compose up -d
 - lrc-file-parser (解析播放LRC歌词文件)
 - jschardet (判断文本文件编码)
 - jimp (本地生成封面缩略图)
-- yargs (扫描 / 封面维护脚本的命令行参数)
 - child_process (nodejs 子进程)
 
 

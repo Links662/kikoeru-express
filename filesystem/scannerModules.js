@@ -17,7 +17,8 @@ const {
   isUsableCoverFile,
   readCoverOrigin,
   markCoverAsGenerated,
-  getFileStamp
+  getFileStamp,
+  hasLrc
 } = require('./utils');
 const { formatRJLabel } = require('../utils/workId');
 const { nameToUUID } = require('../scraper/utils');
@@ -184,18 +185,7 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
       console.log(absolutePath)
       return getTrackList(id, absolutePath)
       .then((tracks) => {
-        metadata.hasLrc = false
-        for (let idx in tracks) {
-          const fileLoc = path.join(absolutePath, tracks[idx].subtitle || '', tracks[idx].title);
-          const lrcFileLoc = fileLoc.substr(0, fileLoc.lastIndexOf(".")) + ".lrc";
-
-          console.log(fileLoc)
-          console.log(lrcFileLoc)
-      
-          if (fs.existsSync(lrcFileLoc)) {
-            metadata.hasLrc = true
-          }
-        }
+        metadata.subtitle = hasLrc(tracks)
         return metadata
       })
     })
@@ -204,7 +194,6 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
       
       metadata.rootFolderName = rootFolderName;
       metadata.dir = dir;
-      if (metadata.hasLrc) metadata.tags.push({"id": -1, "name": "中文字幕"})
 
       return db.insertWorkMetadata(metadata)
         .then(() => {
@@ -388,7 +377,7 @@ const planCoverMaintenance = (id, options = {}) => {
       continue;
     }
 
-    // --all：连 DLsite 的原图一起重取（怀疑真图损坏时用）
+    // 全量重取：连 DLsite 的原图一起重取（怀疑真图损坏时用）
     if (options.refreshAllCovers) {
       plan.upgradable.push(type);
       continue;
@@ -531,7 +520,7 @@ const maintainCovers = async (id, options = {}) => {
   let failed = 0;
 
   if (plan.upgradable.length) {
-    const reason = options.refreshAllCovers ? '按 --all 全量重取' : '本地生成的封面到了升级时间';
+    const reason = options.refreshAllCovers ? '按全量重取模式' : '本地生成的封面到了升级时间';
     emitTaskLog(`[${formatRJLabel(id)}] ${reason}，尝试从 DLsite 取原图: ${plan.upgradable.join(', ')}`, id);
 
     ({ upgraded, failed } = await upgradeCovers(id, plan.upgradable));
@@ -776,6 +765,60 @@ const updateMetadata = (id, options = {}) => {
 const updateMetadataLimited = (id, options = null) => limitP.call(updateMetadata, id, options);
 const updateVoiceActorLimited = (id) => limitP.call(updateMetadata, id, { includeVA: true });
 
+const scanSubtitleForWork = async (work, counts) => {
+  const rjLabel = formatRJLabel(work.id);
+  const rootFolder = config.rootFolders.find(folder => folder.name === work.root_folder);
+
+  if (!rootFolder) {
+    counts.failed += 1;
+    emitMainLog(`[${rjLabel}] 找不到根文件夹 "${work.root_folder}"，保留原字幕状态.`, 'error', 0);
+    addResult(work.id, 'failed', counts.failed);
+    return;
+  }
+
+  try {
+    const tracks = await getTrackList(work.id, path.join(rootFolder.path, work.dir));
+    const subtitle = hasLrc(tracks);
+
+    if (Boolean(work.subtitle) === subtitle) {
+      counts.skipped += 1;
+      return;
+    }
+
+    await db.updateWorkSubtitle(work.id, subtitle);
+    counts.updated += 1;
+    console.log(`[${rjLabel}] 字幕状态已更新为 ${subtitle ? '有字幕' : '无字幕'}.`);
+  } catch (err) {
+    counts.failed += 1;
+    emitMainLog(`[${rjLabel}] 扫描字幕失败: ${err.message}`, 'error', 0);
+    addResult(work.id, 'failed', counts.failed);
+  }
+};
+
+const performSubtitleScan = async () => {
+  const works = await db.knex('t_work').select('id', 'root_folder', 'dir', 'subtitle');
+  const counts = {
+    updated: 0,
+    skipped: 0,
+    failed: 0
+  };
+
+  emitMainLog(` * 共 ${works.length} 个作品，开始扫描字幕...`, 'info', 3);
+  await Promise.all(works.map(work => limitP.call(scanSubtitleForWork, work, counts)));
+
+  const message = `字幕扫描完成: 更新 ${counts.updated} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`;
+  console.log(` * ${message}`);
+  process.send({
+    event: 'SCAN_FINISHED',
+    payload: {
+      message
+    }
+  });
+
+  db.knex.destroy();
+  process.exit(counts.failed ? 1 : 0);
+};
+
 // eslint-disable-next-line no-unused-vars
 const performUpdate = async (options = null) => {
   const baseQuery = db.knex('t_work').select('id');
@@ -837,6 +880,7 @@ const refreshWorks = async (query, idColumnName, processor) => {
 module.exports = {
   performScan,
   performUpdate,
+  performSubtitleScan,
   // 下面几个主要给测试用（封面维护的核心逻辑，不碰数据库）
   generateCoverFromMain,
   planCoverMaintenance,

@@ -26,7 +26,7 @@
   "scripts": {
     "start": "node --trace-warnings app.js",
     "dev": "nodemon --trace-warnings app.js",
-    "scan": "node --trace-warnings ./filesystem/scanner.js",
+    "scan": "node --trace-warnings ./filesystem/scanWorker.js",
     "test": "cross-env eslint . && cross-env NODE_ENV=test mocha test/"
   },
   "author": "Watanuki-Kimihiro",
@@ -58,8 +58,7 @@
     "sqlite3": "^5.0.2",
     "tunnel-agent": "^0.6.0",
     "url-join": "^4.0.1",
-    "uuid": "^8.3.2",
-    "yargs": "^16.2.0"
+    "uuid": "^8.3.2"
   },
   "devDependencies": {
     "chai": "^4.3.4",

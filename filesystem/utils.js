@@ -48,6 +48,10 @@ const getTrackList = (id, dir) => recursiveReaddir(dir)
   })
   .catch((err) => { throw new Error(`Failed to get tracklist from disk: ${err}`); });
 
+const hasLrc = (tracks) => Array.isArray(tracks) && tracks.some((track) => {
+  return track && typeof track.ext === 'string' && track.ext.toLowerCase() === '.lrc';
+});
+
 /**
  * 转换成树状结构
  * @param {Array} tracks 
@@ -417,6 +421,7 @@ const removeTemporaryCoverFiles = async () => {
 
 module.exports = {
   getTrackList,
+  hasLrc,
   toTree,
   getFolderList,
   deleteCoverImageFromDisk,

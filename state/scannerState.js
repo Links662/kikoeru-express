@@ -14,8 +14,10 @@ const child_process = require('child_process');
  */
 
 const SCANNER_ENTRY = {
-  scan: path.join(__dirname, '../filesystem/scanner.js'),
-  update: path.join(__dirname, '../filesystem/updater.js')
+  scan: path.join(__dirname, '../filesystem/scanWorker.js'),
+  update: path.join(__dirname, '../filesystem/updateWorker.js'),
+  subtitles: path.join(__dirname, '../filesystem/subtitleScanWorker.js'),
+  covers: path.join(__dirname, '../filesystem/coverScanWorker.js')
 };
 
 let scanner = null;
@@ -89,7 +91,7 @@ const resetSnapshot = () => {
 
 /**
  * 启动扫描 / 刷新 / 封面维护子进程；已有进程在跑时忽略
- * @param {'scan'|'update'|'covers'} kind
+ * @param {'scan'|'update'|'subtitles'|'covers'} kind
  * @returns {boolean} 是否真的启动了新进程
  */
 const startScan = (kind = 'scan') => {
@@ -97,14 +99,8 @@ const startScan = (kind = 'scan') => {
 
   resetSnapshot();
 
-  const isUpdate = kind === 'update';
-  const isCovers = kind === 'covers';
-
-  let args = [];
-  if (isUpdate) args = ['--refreshAll'];
-  else if (isCovers) args = ['--covers'];
-
-  scanner = child_process.fork(isUpdate ? SCANNER_ENTRY.update : SCANNER_ENTRY.scan, args, { silent: false });
+  const entry = SCANNER_ENTRY[kind] || SCANNER_ENTRY.scan;
+  scanner = child_process.fork(entry, [], { silent: false });
 
   scanner.on('exit', (code) => {
     scanner = null;

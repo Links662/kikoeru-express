@@ -35,6 +35,7 @@ const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
       title: work.title,
       circle_id: work.circle.id,
       nsfw: work.nsfw,
+      subtitle: Boolean(work.subtitle),
       release: work.release,
 
       dl_count: work.dl_count,
@@ -138,6 +139,12 @@ const updateWorkMetadata = (work, options = {}) => knex.transaction(async (trx) 
     });
   }
 });
+
+const updateWorkSubtitle = (id, subtitle) => knex('t_work')
+  .where('id', '=', id)
+  .update({
+    subtitle: Boolean(subtitle)
+  });
 
 
 /**
@@ -716,6 +723,7 @@ const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) 
 
 module.exports = {
   knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksCount, getWorksByKeyWord, updateWorkMetadata,
+  updateWorkSubtitle,
   getLabels, getMetadata, getFavourites, setFavourite,
   getRecentWorkIds,
   createUser, updateUserPassword, deleteUser,

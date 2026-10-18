@@ -99,6 +99,10 @@ const initSocket = (server) => {
       scannerState.startScan('update');
     });
 
+    socket.on('PERFORM_SUBTITLE_SCAN', () => {
+      scannerState.startScan('subtitles');
+    });
+
     socket.on('PERFORM_COVER_REPAIR', () => {
       scannerState.startScan('covers');
     });
