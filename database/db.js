@@ -203,12 +203,12 @@ const getWorkMetadata = async (id, username) => {
   // TODO: do this all in a single transaction?
 
     const ratingSubQuery = knex('t_review')
-    .select(['t_review.work_id', 't_review.rating AS userRating', 't_review.review_text', 't_review.progress', knex.raw('strftime(\'%Y-%m-%d %H:%M:%S\', t_review.updated_at, \'localtime\') AS updated_at'), 't_review.user_name'])
+    .select(['t_review.work_id', 't_review.rating', 't_review.review_text AS reviewText', 't_review.progress', knex.raw('strftime(\'%Y-%m-%d %H:%M:%S\', t_review.updated_at, \'localtime\') AS updatedAt'), 't_review.user_name'])
     .join('t_work', 't_work.id', 't_review.work_id')
     .where('t_review.user_name', username).as('userrate');
 
     let query = () => knex('staticMetadata')
-      .select(['staticMetadata.*', 'userrate.userRating', 'userrate.review_text', 'userrate.progress', 'userrate.updated_at', 'userrate.user_name'])
+      .select(['staticMetadata.*', 'userrate.rating', 'userrate.reviewText', 'userrate.progress', 'userrate.updatedAt', 'userrate.user_name'])
       .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id')
       .where('id', '=', id);
 
@@ -318,10 +318,10 @@ const getWorksBy = ({ id, field, username, nsfw, subtitle } = {}) => {
     const userrate = knex('t_review')
       .select([
         'work_id',
-        'rating AS userRating',
-        'review_text',
+        'rating',
+        'review_text AS reviewText',
         'progress',
-        knex.raw("strftime('%Y-%m-%d %H:%M:%S', updated_at, 'localtime') AS updated_at")
+        knex.raw("strftime('%Y-%m-%d %H:%M:%S', updated_at, 'localtime') AS updatedAt")
       ])
       .where('user_name', username)
       .as('userrate');
@@ -329,10 +329,10 @@ const getWorksBy = ({ id, field, username, nsfw, subtitle } = {}) => {
     baseQuery = baseQuery
       .leftJoin(userrate, 'userrate.work_id', 'staticMetadata.id')
       .select([
-        'userrate.userRating',
-        'userrate.review_text',
+        'userrate.rating',
+        'userrate.reviewText',
         'userrate.progress',
-        'userrate.updated_at'
+        'userrate.updatedAt'
       ]);
   }
 
@@ -365,10 +365,10 @@ const getWorksByKeyWord = ({keyword, username = 'admin', nsfw, subtitle} = {}) =
   const ratingSubQuery = knex('t_review')
   .select([
     't_review.work_id',
-    't_review.rating AS userRating',
-    't_review.review_text',
+    't_review.rating',
+    't_review.review_text AS reviewText',
     't_review.progress',
-    knex.raw("strftime('%Y-%m-%d %H:%M:%S', t_review.updated_at, 'localtime') AS updated_at")
+    knex.raw("strftime('%Y-%m-%d %H:%M:%S', t_review.updated_at, 'localtime') AS updatedAt")
   ])
   .join('t_work', 't_work.id', 't_review.work_id')
   .where('t_review.user_name', username).as('userrate')
@@ -376,10 +376,10 @@ const getWorksByKeyWord = ({keyword, username = 'admin', nsfw, subtitle} = {}) =
   const baseQuery = () => applyWorkFilters(
     knex('staticMetadata').select([
       'staticMetadata.*',
-      'userrate.userRating',
-      'userrate.review_text',
+      'userrate.rating',
+      'userrate.reviewText',
       'userrate.progress',
-      'userrate.updated_at'
+      'userrate.updatedAt'
     ])
       .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id'),
     { nsfw, subtitle }
@@ -592,7 +592,7 @@ const deleteUser = names => knex.transaction(async (trx) => {
 });
 
 
-const updateUserReview = async (username, workid, rating, review_text = '', progress = '', starOnly = true, progressOnly= false) => knex.transaction(async(trx) => {
+const updateUserReview = async (username, workid, rating, reviewText = '', progress = '', starOnly = true, progressOnly= false) => knex.transaction(async(trx) => {
     if (starOnly) {
       await trx.raw('UPDATE t_review SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE user_name = ? AND work_id = ?;', [rating, username, workid]);
       await trx.raw('INSERT OR IGNORE INTO t_review (user_name, work_id, rating) VALUES (?, ?, ?);', [username, workid, rating]);
@@ -600,9 +600,19 @@ const updateUserReview = async (username, workid, rating, review_text = '', prog
       await trx.raw('UPDATE t_review SET progress = ?, updated_at = CURRENT_TIMESTAMP WHERE user_name = ? AND work_id = ?;', [progress, username, workid]);
       await trx.raw('INSERT OR IGNORE INTO t_review (user_name, work_id, progress) VALUES (?, ?, ?);', [username, workid, progress]);
     } else {
-      await trx.raw('UPDATE t_review SET rating = ?, review_text = ?, progress = ?, updated_at = CURRENT_TIMESTAMP WHERE user_name = ? AND work_id = ?;', [rating, review_text, progress, username, workid]);
-      await trx.raw('INSERT OR IGNORE INTO t_review (user_name, work_id, rating, review_text, progress) VALUES (?, ?, ?, ?, ?);', [username, workid, rating, review_text, progress]);
+      await trx.raw('UPDATE t_review SET rating = ?, review_text = ?, progress = ?, updated_at = CURRENT_TIMESTAMP WHERE user_name = ? AND work_id = ?;', [rating, reviewText, progress, username, workid]);
+      await trx.raw('INSERT OR IGNORE INTO t_review (user_name, work_id, rating, review_text, progress) VALUES (?, ?, ?, ?, ?);', [username, workid, rating, reviewText, progress]);
     }
+
+    return trx('t_review')
+      .select([
+        'rating',
+        'review_text AS reviewText',
+        'progress',
+        trx.raw("strftime('%Y-%m-%d %H:%M:%S', updated_at, 'localtime') AS updatedAt")
+      ])
+      .where({ user_name: username, work_id: workid })
+      .first();
 });
 
 const deleteUserReview = (username, workid) => knex.transaction(trx => trx('t_review')
@@ -615,11 +625,11 @@ const getWorksWithReviews = async ({username = '', limit = 1000, offset = 0, ord
   const ratingSubQuery = () => knex('t_review')
     .select([
       'work_id',
-      'rating AS userRating',
-      'review_text',
+      'rating',
+      'review_text AS reviewText',
       'progress',
       knex.raw(
-        "strftime('%Y-%m-%d %H:%M:%S', updated_at, 'localtime') AS updated_at"
+        "strftime('%Y-%m-%d %H:%M:%S', updated_at, 'localtime') AS updatedAt"
       ),
       'user_name'
     ])
@@ -629,10 +639,10 @@ const getWorksWithReviews = async ({username = '', limit = 1000, offset = 0, ord
   const baseQuery = () => knex('staticMetadata')
     .select([
       'staticMetadata.*',
-      'userrate.userRating',
-      'userrate.review_text',
+      'userrate.rating',
+      'userrate.reviewText',
       'userrate.progress',
-      'userrate.updated_at',
+      'userrate.updatedAt',
       'userrate.user_name'
     ])
     .join(ratingSubQuery(), 'userrate.work_id', 'staticMetadata.id')

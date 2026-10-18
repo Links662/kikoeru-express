@@ -15,8 +15,8 @@ const normalize = (works, options = {}) => {
     delete record.circle_name;
     delete record.vaObj;
     delete record.tagObj;
-    if (options.dateOnly && record.updated_at) {
-      record.updated_at = strftime('%F', record.updated_at);
+    if (options.dateOnly && record.updatedAt) {
+      record.updatedAt = strftime('%F', record.updatedAt);
     }
   })
   return works
