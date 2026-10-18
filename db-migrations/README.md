@@ -4,6 +4,23 @@
 
 # 数据库版本变更记录
 
+## 20261018 - 年龄分级不允许为空
+
+迁移文件：`20261018_make_t_work_nsfw_not_null.sql`
+
+执行前提：先执行 `20261018_add_work_subtitle.sql` 和
+`20261018_replace_circle_obj_with_circle_name.sql`。
+
+### 结构变更
+
+- `t_work.nsfw` 改为 `INTEGER NOT NULL DEFAULT 1`。
+- 重建 `t_work` 时保留原有主键、外键和 `t_work_index`。
+- 同步重建 `staticMetadata` 视图，保留 `circle_name` 和 `subtitle` 字段。
+
+### 数据清理
+
+- 现有 `nsfw IS NULL` 的记录按 R18 回填为 `1`。
+
 ## 20261018 - 作品字幕状态
 
 迁移文件：`20261018_add_work_subtitle.sql`

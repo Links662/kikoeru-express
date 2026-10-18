@@ -15,6 +15,43 @@ const { isValidRequest } = require('./utils/validate');
 const FIELD_PARAMS = { circles: 'circle', tags: 'tag', vas: 'va' };
 const FIELD_PARAM_VALUES = Object.keys(FIELD_PARAMS);
 
+const WORK_ORDER_FIELDS = [
+  'insert_time',
+  'release',
+  'id',
+  'rate_average_2dp',
+  'dl_count',
+  'random',
+  'betterRandom'
+];
+
+const workListValidators = () => [
+  query('page').optional({ nullable: true }).isInt(),
+  query('sort').optional({ nullable: true }).isIn(['desc', 'asc']),
+  query('seed').optional({ nullable: true }).isInt(),
+  query('order').optional({ nullable: true }).isIn(WORK_ORDER_FIELDS),
+  query('nsfw').optional({ nullable: true }).isIn(['true', 'false']),
+  query('subtitle').optional({ nullable: true }).isIn(['true', 'false'])
+];
+
+const parseBooleanQuery = value => {
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  return undefined;
+};
+
+const parseWorkFilters = req => ({
+  nsfw: parseBooleanQuery(req.query.nsfw),
+  subtitle: parseBooleanQuery(req.query.subtitle)
+});
+
+const countWorks = async query => {
+  const result = await query
+    .clearSelect()
+    .count({ count: 'staticMetadata.id' });
+  return Number(result[0].count) || 0;
+};
+
 const mapFieldParam = (req, res, next) => {
   const field = FIELD_PARAMS[req.params.fields];
   if (!field) return next('route');
@@ -111,9 +148,7 @@ router.get('/tracks/:id',
 });
 
 router.get('/works',
-  query('page').optional({ nullable: true }).isInt(),
-  query('sort').optional({ nullable: true }).isIn(['desc', 'asc']),
-  query('seed').optional({ nullable: true }).isInt(),
+  ...workListValidators(),
   async (req, res) => {
     if (!isValidRequest(req, res)) return;
 
@@ -123,10 +158,11 @@ router.get('/works',
     const offset = (currentPage - 1) * getPageSize();
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
     const username = config.auth ? req.user.name : 'admin';
+    const filters = parseWorkFilters(req);
 
     try {
-      const baseQuery = () => db.getWorksBy({ username });
-      const totalCount = await db.getWorksCount(1)
+      const baseQuery = () => db.getWorksBy({ username, ...filters });
+      const totalCount = await countWorks(baseQuery());
       let works;
 
       if (order === 'random') {
@@ -227,10 +263,13 @@ const searchWorks = async (req, res, next) => {
   const offset = (currentPage - 1) * getPageSize();
   const username = config.auth ? req.user.name : 'admin';
   const shuffleSeed = req.query.seed ? req.query.seed : 7;
+  const filters = parseWorkFilters(req);
+
+  if (!isValidRequest(req, res)) return;
   
   try {
-    const query = () => db.getWorksByKeyWord({keyword: keyword, username: username});
-    const totalCount = await query().count('id as count');
+    const query = () => db.getWorksByKeyWord({ keyword, username, ...filters });
+    const totalCount = await countWorks(query());
 
     let works = null;
 
@@ -248,7 +287,7 @@ const searchWorks = async (req, res, next) => {
       pagination: {
         currentPage,
         pageSize: getPageSize(),
-        totalCount: totalCount[0]['count']
+        totalCount
       }
     });
   } catch(err) {
@@ -258,12 +297,13 @@ const searchWorks = async (req, res, next) => {
 };
 
 // express 5 不支持 '/search/:keyword?' 这种可选参数，拆成带/不带关键字两条路由
-router.get('/search', searchWorks);
-router.get('/search/:keyword', searchWorks);
+router.get('/search', ...workListValidators(), searchWorks);
+router.get('/search/:keyword', ...workListValidators(), searchWorks);
 
 router.get('/:fields/:id/works',
   mapFieldParam,
   param('fields').isIn(FIELD_PARAM_VALUES),
+  ...workListValidators(),
   // eslint-disable-next-line no-unused-vars
   async (req, res, next) => {
     if(!isValidRequest(req, res)) return;
@@ -274,14 +314,16 @@ router.get('/:fields/:id/works',
     const offset = (currentPage - 1) * getPageSize();
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
     const username = config.auth ? req.user.name : 'admin';
+    const filters = parseWorkFilters(req);
 
     try {
       const query = () => db.getWorksBy({
         id: req.params.id,
         field: req.params.field,
-        username
+        username,
+        ...filters
       });
-      const totalCount = await query().count('id as count');
+      const totalCount = await countWorks(query());
 
       let works = null;
 
@@ -299,7 +341,7 @@ router.get('/:fields/:id/works',
         pagination: {
           currentPage,
           pageSize: getPageSize(),
-          totalCount: totalCount[0]['count']
+          totalCount
         }
       });
     } catch(err) {

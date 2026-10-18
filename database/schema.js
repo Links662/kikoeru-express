@@ -20,7 +20,7 @@ const createCoreTables = async () => {
       table.string('dir').notNullable();
       table.string('title').notNullable();
       table.integer('circle_id').notNullable();
-      table.boolean('nsfw');
+      table.boolean('nsfw').notNullable().defaultTo(true);
       table.boolean('subtitle').notNullable().defaultTo(false);
       table.string('release');
       table.integer('dl_count');
@@ -103,7 +103,7 @@ const createView = async () => {
   const selectQuery = knex('t_work as w')
     .select(
       'w.id', 'w.title', 'w.circle_id',
-      knex.raw("json_object('id', w.circle_id, 'name', c.name) AS circleObj"),
+      knex.raw('c.name AS circle_name'),
       'w.nsfw', 'w.subtitle', 'w.release', 'w.dl_count', 'w.price', 'w.review_count', 'w.rate_count',
       'w.rate_average_2dp', 'w.rate_count_detail', 'w.rank', 'w.insert_time',
       knex.raw(`(

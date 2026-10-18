@@ -1,7 +1,7 @@
 const socket = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { config } = require('./config');
-const { getWorksCount, getUserState } = require('./database/db');
+const { getUserState } = require('./database/db');
 const scannerState = require('./state/scannerState');
 const { registerUserSocket, unregisterUserSocket } = require('./state/userSockets');
 
@@ -116,9 +116,6 @@ const initSocket = (server) => {
       console.error(err);
     });
 
-    socket.on('COUNT_UPDATE', () => {
-      getWorksCount(0)
-    });
   });
 }
 

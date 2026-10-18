@@ -8,7 +8,21 @@ const connEnv = 'development';
 const conn = require('./knexfile')[connEnv]
 const knex = require('knex')(conn);
 
-let cachedTotalCount = null;
+/**
+ * 给作品查询附加年龄分级和字幕筛选。
+ * nsfw / subtitle 为 undefined 时表示不筛选。
+ */
+const applyWorkFilters = (query, { nsfw, subtitle } = {}) => {
+  if (typeof nsfw === 'boolean') {
+    query.where('nsfw', nsfw)
+  }
+
+  if (typeof subtitle === 'boolean') {
+    query.where('subtitle', subtitle)
+  }
+
+  return query
+}
 
 /**
  * 给 Error 挂上 HTTP 状态码，路由层直接用它决定响应码，
@@ -263,7 +277,7 @@ const removeWork = async (id, trxProvider) => {
  * @param {String} field Which field to filter by.
  * @param {String} username Include this user's rating, progress and note.
  */
-const getWorksBy = ({ id, field, username } = {}) => {
+const getWorksBy = ({ id, field, username, nsfw, subtitle } = {}) => {
   let baseQuery = knex('staticMetadata').select('staticMetadata.*');
 
   if (username) {
@@ -288,6 +302,8 @@ const getWorksBy = ({ id, field, username } = {}) => {
       ]);
   }
 
+  baseQuery = applyWorkFilters(baseQuery, { nsfw, subtitle });
+
   switch (field) {
     case 'circle':
       return baseQuery.where('circle_id', id);
@@ -307,22 +323,11 @@ const getWorksBy = ({ id, field, username } = {}) => {
   }
 };
 
-const getWorksCount = async (cacheflag = 0) => {
-  if (cacheflag == 1 && cachedTotalCount != null) {
-    return cachedTotalCount;
-  } else {
-    const baseQuery = () => getWorksBy({});
-    const totalCountResult = await baseQuery().count('id as count');
-    cachedTotalCount = totalCountResult[0].count;
-    return cachedTotalCount;
-  }
-};
-
 /**
  * 根据关键字查询音声
  * @param {String} keyword
  */
-const getWorksByKeyWord = ({keyword, username = 'admin'} = {}) => {
+const getWorksByKeyWord = ({keyword, username = 'admin', nsfw, subtitle} = {}) => {
   const ratingSubQuery = knex('t_review')
   .select([
     't_review.work_id',
@@ -334,17 +339,21 @@ const getWorksByKeyWord = ({keyword, username = 'admin'} = {}) => {
   .join('t_work', 't_work.id', 't_review.work_id')
   .where('t_review.user_name', username).as('userrate')
 
-  const workid = keyword.match(/((R|r)(J|j))?(\d+)/) ? keyword.match(/((R|r)(J|j))?(\d+)/)[4] : '';
-  if (workid) {
-    return knex('staticMetadata').select([
+  const baseQuery = () => applyWorkFilters(
+    knex('staticMetadata').select([
       'staticMetadata.*',
       'userrate.userRating',
       'userrate.review_text',
       'userrate.progress',
       'userrate.updated_at'
     ])
-      .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id')
-      .where('id', '=', workid);
+      .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id'),
+    { nsfw, subtitle }
+  )
+
+  const workid = keyword.match(/((R|r)(J|j))?(\d+)/) ? keyword.match(/((R|r)(J|j))?(\d+)/)[4] : '';
+  if (workid) {
+    return baseQuery().where('id', '=', workid);
   }
 
   const circleIdQuery = knex('t_circle').select('id').where('name', 'like', `%${keyword}%`);
@@ -357,17 +366,12 @@ const getWorksByKeyWord = ({keyword, username = 'admin'} = {}) => {
   ]);
 
 
-  return knex('staticMetadata').select([
-    'staticMetadata.*',
-    'userrate.userRating',
-    'userrate.review_text',
-    'userrate.progress',
-    'userrate.updated_at'
-  ])
-    .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id')
-    .where('title', 'like', `%${keyword}%`)
-    .orWhere('circle_id', 'in', circleIdQuery)
-    .orWhere('id', 'in', workIdQuery);
+  // 关键字条件必须整体分组，否则后面附加的筛选条件只会作用于最后一个 OR 分支。
+  return baseQuery().where(function () {
+    this.where('title', 'like', `%${keyword}%`)
+      .orWhere('circle_id', 'in', circleIdQuery)
+      .orWhere('id', 'in', workIdQuery);
+  });
 };
 
 /**
@@ -722,7 +726,7 @@ const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) 
 })
 
 module.exports = {
-  knex, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksCount, getWorksByKeyWord, updateWorkMetadata,
+  knex, applyWorkFilters, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksByKeyWord, updateWorkMetadata,
   updateWorkSubtitle,
   getLabels, getMetadata, getFavourites, setFavourite,
   getRecentWorkIds,

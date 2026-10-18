@@ -1,7 +1,7 @@
 const cheerio = require('cheerio');
 
 const axios = require('./axios');
-const { nameToUUID, hasLetter } = require('./utils');
+const { nameToUUID, hasLetter, nsfwFromAgeRating } = require('./utils');
 const scrapeWorkMetadataFromHVDB = require('./hvdb');
 const { formatRJLabel } = require('../utils/workId');
 
@@ -14,7 +14,8 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
   const rjLabel = formatRJLabel(id);
   const url = `https://www.dlsite.com/maniax/work/=/product_id/${rjLabel}.html`;
 
-  const work = { id, tags: [], vas: [] };
+  // 抓源缺少年龄字段时按 R18 处理，保证交给持久层的元数据字段完整。
+  const work = { id, nsfw: true, tags: [], vas: [] };
   let AGE_RATINGS, VA, GENRE, RELEASE, SERIES, COOKIE_LOCALE;
   switch(language) {
     case 'ja-jp':
@@ -75,7 +76,7 @@ const scrapeStaticWorkMetadataFromDLsite = (id, language) => new Promise((resolv
         .filter(function() {
           return $(this).text() === AGE_RATINGS;
         }).parent().children('td').find('span:first').text();
-      work.nsfw = R18 === 'R18';
+      work.nsfw = nsfwFromAgeRating(R18);
 
       // 贩卖日 (YYYY-MM-DD)
       const release = workOutline.children('tbody').children('tr').children('th')

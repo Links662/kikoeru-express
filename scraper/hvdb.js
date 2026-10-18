@@ -1,7 +1,7 @@
 const htmlparser = require('htmlparser2');
 
 const axios = require('./axios');
-const { nameToUUID } = require('./utils');
+const { nameToUUID, nsfwFromSfwFlag } = require('./utils');
 const { formatRJLabel } = require('../utils/workId');
 
 /**
@@ -19,7 +19,8 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
       return response.data
     })
     .then((data) => {
-      const work = { id, tags: [], vas: [] };
+      // 抓源缺少 SFW 字段时按 R18 处理，保证交给持久层的元数据字段完整。
+      const work = { id, nsfw: true, tags: [], vas: [] };
       let writeTo;
       let currentVaName = '';
 
@@ -29,7 +30,7 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
             if (attrs.id === 'Name') {
               work.title = attrs.value;
             } else if (attrs.name === 'SFW') {
-              work.nsfw = attrs.value === 'false';
+              work.nsfw = nsfwFromSfwFlag(attrs.value);
             }
           }
 
