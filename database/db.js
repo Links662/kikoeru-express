@@ -52,12 +52,12 @@ const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
       subtitle: Boolean(work.subtitle),
       release: work.release,
 
-      dl_count: work.dl_count,
-      price: work.price,
-      review_count: work.review_count,
-      rate_count: work.rate_count,
-      rate_average_2dp: work.rate_average_2dp,
-      rate_count_detail: JSON.stringify(work.rate_count_detail),
+      dl_count: work.dl_count || 0,
+      price: work.price || 0,
+      review_count: work.review_count || 0,
+      rate_count: work.rate_count || 0,
+      rate_average_2dp: work.rate_average_2dp || 0,
+      rate_count_detail: JSON.stringify(work.rate_count_detail || []),
       rank: work.rank ? JSON.stringify(work.rank) : null,
 
       insert_time: knex.fn.now()
@@ -105,17 +105,24 @@ const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
  * @param {Object} work Work object.
  */
 const updateWorkMetadata = (work, options = {}) => knex.transaction(async (trx) => {
-  await trx('t_work')
-    .where('id', '=', work.id)
-    .update({
-      dl_count: work.dl_count,
-      price: work.price,
-      review_count: work.review_count,
-      rate_count: work.rate_count,
-      rate_average_2dp: work.rate_average_2dp,
-      rate_count_detail: JSON.stringify(work.rate_count_detail),
-      rank: work.rank ? JSON.stringify(work.rank) : null,
-    });
+  const dynamicUpdate = {};
+  if (work.dl_count !== undefined) dynamicUpdate.dl_count = work.dl_count;
+  if (work.price !== undefined) dynamicUpdate.price = work.price;
+  if (work.review_count !== undefined) dynamicUpdate.review_count = work.review_count;
+  if (work.rate_count !== undefined) dynamicUpdate.rate_count = work.rate_count;
+  if (work.rate_average_2dp !== undefined) dynamicUpdate.rate_average_2dp = work.rate_average_2dp;
+  if (work.rate_count_detail !== undefined) {
+    dynamicUpdate.rate_count_detail = JSON.stringify(work.rate_count_detail || []);
+  }
+  if (work.rank !== undefined) {
+    dynamicUpdate.rank = work.rank ? JSON.stringify(work.rank) : null;
+  }
+
+  if (Object.keys(dynamicUpdate).length) {
+    await trx('t_work')
+      .where('id', '=', work.id)
+      .update(dynamicUpdate);
+  }
 
   if (options.includeVA || options.refreshAll) {
     await trx('r_va_work').where('work_id', work.id).del();
