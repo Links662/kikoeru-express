@@ -1,0 +1,37 @@
+[
+  {
+    "product_id": "RJ01171233",
+    "work_name": "NoTitle",
+    "maker_id": "RG62782",
+    "maker_name": "つばめいと",
+    "age_category": 3,
+    "age_category_string": "adult",
+    "release_date": "2024-04-01 00:00:00",
+    "genres": [
+      { "id": 497, "name": "ASMR" },
+      { "id": 498, "name": "バイノーラル" },
+      { "id": 499, "name": "癒し" },
+      { "id": 500, "name": "恋人同士" },
+      { "id": 501, "name": "耳舐め" },
+      { "id": 502, "name": "ささやき" },
+      { "id": 503, "name": "同棲" }
+    ],
+    "creaters": {
+      "voice_by": [
+        { "name": "柚木つばめ" }
+      ]
+    },
+    "price": 550,
+    "rate_count_detail": [
+      { "review_point": 1, "count": 3, "ratio": 0 },
+      { "review_point": 2, "count": 18, "ratio": 0 },
+      { "review_point": 3, "count": 96, "ratio": 2 },
+      { "review_point": 4, "count": 299, "ratio": 9 },
+      { "review_point": 5, "count": 2848, "ratio": 87 }
+    ],
+    "rank_day": 2,
+    "rank_day_date": "2024-04-02 00:00:00",
+    "rank_total": 1170,
+    "rank_total_date": "2024-05-01 00:00:00"
+  }
+]

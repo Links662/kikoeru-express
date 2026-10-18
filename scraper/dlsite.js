@@ -7,28 +7,38 @@ const {
   nsfwFromAgeRating
 } = require('./utils');
 const scrapeWorkMetadataFromHVDB = require('./hvdb');
-const { scrapeWorkMetadataFromDLsiteProduct } = require('./dlsiteProduct');
 const { formatRJLabel } = require('../utils/workId');
 
-const DEFAULT_TAG_LANGUAGE = 'zh-cn';
+const DEFAULT_TAG_LANGUAGE = 'zh-CN';
+const STATIC_METADATA_SOURCES = {
+  PRODUCT: 'product',
+  HTML: 'html'
+};
+const SUPPORTED_TAG_LANGUAGES = new Set(['ja-JP', 'zh-TW', 'zh-CN']);
+
+const getTagLanguage = (language) => {
+  const value = language || DEFAULT_TAG_LANGUAGE;
+  if (!SUPPORTED_TAG_LANGUAGES.has(value)) {
+    throw new Error(`Unsupported DLsite tag language: ${value}.`);
+  }
+  return value;
+};
 
 /**
  * Scrapes static work metadata from public DLsite page HTML.
  * @param {number} id Work id.
- * @param {String} language 标签语言，'ja-jp', 'zh-tw' or 'zh-cn'，默认'zh-cn'
+ * @param {String} language 标签语言，'ja-JP', 'zh-TW' or 'zh-CN'，默认'zh-CN'
  */
 const scrapeHtmlWorkMetadataFromDLsite = (id, language) => new Promise((resolve, reject) => {
   const rjLabel = formatRJLabel(id);
   const url = `https://www.dlsite.com/maniax/work/=/product_id/${rjLabel}.html`;
-  const normalizedLanguage = typeof language === 'string' && language.trim()
-    ? language.trim().toLowerCase()
-    : DEFAULT_TAG_LANGUAGE;
+  const tagLanguage = getTagLanguage(language);
 
   // 抓源缺少年龄字段时按 R18 处理，保证交给持久层的元数据字段完整。
   const work = { id, nsfw: true, tags: [], vas: [] };
   let AGE_RATINGS, VA, GENRE, RELEASE, SERIES, COOKIE_LOCALE;
-  switch (normalizedLanguage) {
-    case 'ja-jp':
+  switch (tagLanguage) {
+    case 'ja-JP':
       COOKIE_LOCALE = 'locale=ja-jp';
       AGE_RATINGS = '年齢指定';
       GENRE = 'ジャンル';
@@ -36,7 +46,7 @@ const scrapeHtmlWorkMetadataFromDLsite = (id, language) => new Promise((resolve,
       RELEASE = '販売日';
       SERIES = 'シリーズ名';
       break;
-    case 'zh-tw':
+    case 'zh-TW':
       COOKIE_LOCALE = 'locale=zh-tw';
       AGE_RATINGS = '年齡指定';
       GENRE = '分類';
@@ -44,13 +54,14 @@ const scrapeHtmlWorkMetadataFromDLsite = (id, language) => new Promise((resolve,
       RELEASE = '販賣日';
       SERIES = '系列名';
       break;
-    default:
+    case 'zh-CN':
       COOKIE_LOCALE = 'locale=zh-cn';
       AGE_RATINGS = '年龄指定';
       GENRE = '分类';
       VA = '声优';
       RELEASE = '贩卖日';
       SERIES = '系列名';
+      break;
   }
 
   axios.retryGet(url, {
@@ -156,20 +167,185 @@ const scrapeHtmlWorkMetadataFromDLsite = (id, language) => new Promise((resolve,
 });
 
 /**
- * 优先使用旧的作品页 HTML 抓取，失败后再用 product.json 兜底。
- * 这样已下架作品在旧页面不可用时仍然可以写入元数据。
+ * 从 public product.json 抓取静态元数据。
  * @param {number} id Work id.
- * @param {String} language 标签语言，'ja-jp', 'zh-tw' or 'zh-cn'，默认'zh-cn'
+ * @param {String} language 标签语言，'ja-JP', 'zh-TW' or 'zh-CN'，默认'zh-CN'
  */
-const scrapeStaticWorkMetadataFromDLsite = (id, language) => {
+const scrapeProductWorkMetadataFromDLsite = (id, language) => new Promise((resolve, reject) => {
   const rjLabel = formatRJLabel(id);
+  const locale = getTagLanguage(language);
+  const url = `https://www.dlsite.com/maniax/api/=/product.json?workno=${rjLabel}&locale=${locale}`;
 
-  return scrapeHtmlWorkMetadataFromDLsite(id, language)
+  axios.retryGet(url, { retry: {} })
+    .then((response) => {
+      const item = Array.isArray(response.data) ? response.data[0] : response.data;
+      if (!item || typeof item !== 'object') {
+        throw new Error(`Couldn't parse data from DLsite product API for ${rjLabel}.`);
+      }
+
+      const rawTitle = item.work_name || item.work_name_masked ||
+        item.product_name || item.alt_name;
+      const title = typeof rawTitle === 'string'
+        ? rawTitle.trim().replace(/ \[.+\] \| DLsite$/, '')
+        : '';
+      const circleIdMatch = String(item.maker_id || item.circle_id || '').match(/\d+/);
+      const circleId = circleIdMatch ? parseInt(circleIdMatch[0], 10) : null;
+      const rawCircleName = item.maker_name || item.circle_name || item.maker_name_en;
+      const circleName = typeof rawCircleName === 'string'
+        ? rawCircleName.trim()
+        : '';
+
+      if (!title) {
+        throw new Error(`Couldn't find a work title in DLsite product API response for ${rjLabel}.`);
+      }
+      if (!circleId || !circleName) {
+        throw new Error(`Couldn't find a circle in DLsite product API response for ${rjLabel}.`);
+      }
+
+      const ageCategory = typeof item.age_category_string === 'string'
+        ? item.age_category_string.trim().toLowerCase()
+        : '';
+      const numericAgeCategory = Number(item.age_category);
+      const nsfw = ageCategory
+        ? ageCategory === 'adult' || ageCategory === 'r18'
+        : (Number.isFinite(numericAgeCategory) ? numericAgeCategory === 3 : true);
+
+      const releaseMatch = typeof (item.release_date || item.regist_date) === 'string'
+        ? (item.release_date || item.regist_date).match(/^\d{4}-\d{2}-\d{2}/)
+        : null;
+      const release = releaseMatch ? releaseMatch[0] : '';
+
+      const genres = Array.isArray(item.genres)
+        ? item.genres
+        : (Array.isArray(item.genres_replaced) ? item.genres_replaced : []);
+      const seenTagIds = new Set();
+      const tags = [];
+      for (const genre of genres) {
+        const rawName = genre.name || genre.name_base;
+        const tagId = Number(genre.id || genre.search_val);
+        const tagName = typeof rawName === 'string' ? rawName.trim() : '';
+        if (!Number.isFinite(tagId) || !tagName || seenTagIds.has(tagId)) continue;
+
+        seenTagIds.add(tagId);
+        tags.push({ id: tagId, name: tagName });
+      }
+
+      const voiceBy = item.creaters && Array.isArray(item.creaters.voice_by)
+        ? item.creaters.voice_by
+        : [];
+      const seenVaNames = new Set();
+      const vas = [];
+      for (const va of voiceBy) {
+        const vaName = typeof va.name === 'string' ? va.name.trim() : '';
+        if (!vaName || seenVaNames.has(vaName)) continue;
+
+        seenVaNames.add(vaName);
+        vas.push({ id: nameToUUID(vaName), name: vaName });
+      }
+
+      const detail = item.rate_count_detail;
+      let rateCountDetail;
+      if (Array.isArray(detail)) {
+        rateCountDetail = [1, 2, 3, 4, 5].map((point) => {
+          const entry = detail.find(value => Number(value.review_point) === point) || {};
+          return {
+            review_point: point,
+            count: Number(entry.count) || 0,
+            ratio: Number(entry.ratio) || 0
+          };
+        });
+      } else {
+        const counts = [1, 2, 3, 4, 5].map(point => {
+          if (!detail || typeof detail !== 'object') return 0;
+          return Number(detail[point] || detail[String(point)]) || 0;
+        });
+        const total = counts.reduce((sum, count) => sum + count, 0);
+        rateCountDetail = counts.map((count, index) => ({
+          review_point: index + 1,
+          count,
+          ratio: total ? Math.floor(count / total * 100) : 0
+        }));
+      }
+
+      const detailCount = rateCountDetail.reduce((sum, entry) => sum + entry.count, 0);
+      const rateCount = (item.rate_count !== undefined && item.rate_count !== null)
+        ? Number(item.rate_count) || 0
+        : detailCount;
+      const weightedRate = rateCountDetail.reduce(
+        (sum, entry) => sum + entry.review_point * entry.count,
+        0
+      );
+      const rateAverage = (item.rate_average_2dp !== undefined && item.rate_average_2dp !== null)
+        ? Number(item.rate_average_2dp)
+        : (detailCount ? Number((weightedRate / detailCount).toFixed(2)) : 0.0);
+
+      const rankFields = [
+        ['day', 'rank_day', 'rank_day_date'],
+        ['week', 'rank_week', 'rank_week_date'],
+        ['month', 'rank_month', 'rank_month_date'],
+        ['year', 'rank_year', 'rank_year_date'],
+        ['total', 'rank_total', 'rank_total_date']
+      ];
+      const ranks = [];
+      for (const [term, rankField, dateField] of rankFields) {
+        const rank = Number(item[rankField]);
+        if (!item[rankField] || !Number.isFinite(rank) || rank <= 0) continue;
+
+        const rankDateMatch = typeof item[dateField] === 'string'
+          ? item[dateField].match(/^\d{4}-\d{2}-\d{2}/)
+          : null;
+        ranks.push({
+          term,
+          category: 'all',
+          rank,
+          rank_date: rankDateMatch ? rankDateMatch[0] : ''
+        });
+      }
+
+      const work = {
+        id,
+        title,
+        circle: { id: circleId, name: circleName },
+        nsfw,
+        release,
+        tags,
+        vas,
+        rate_count: rateCount,
+        rate_average_2dp: rateAverage,
+        rate_count_detail: rateCountDetail,
+        rank: ranks.length ? ranks : null
+      };
+
+      if (item.price !== undefined && item.price !== null) {
+        work.price = Number(item.price) || 0;
+      }
+      if (item.dl_count !== undefined && item.dl_count !== null) {
+        work.dl_count = Number(item.dl_count) || 0;
+      }
+      if (item.review_count !== undefined && item.review_count !== null) {
+        work.review_count = Number(item.review_count) || 0;
+      }
+
+      const seriesIdMatch = String(item.series_id || '').match(/\d+/);
+      if (seriesIdMatch && item.series_name) {
+        work.series = {
+          id: parseInt(seriesIdMatch[0], 10),
+          name: item.series_name
+        };
+      }
+
+      return work;
+    })
+    .then(resolve)
     .catch((error) => {
-      console.warn(`[${rjLabel}] DLsite 作品页抓取失败，改用 product.json: ${error.message}`);
-      return scrapeWorkMetadataFromDLsiteProduct(id, language);
+      if (error.response) {
+        // 请求已发出，但服务器响应的状态码不在 2xx 范围内
+        reject(new Error(`Couldn't request DLsite product API (${url}), received: ${error.response.status}.`));
+      } else {
+        reject(error);
+      }
     });
-};
+});
 
 /**
  * Requests dynamic work metadata from public DLsite API.
@@ -241,15 +417,29 @@ const fillMissingVasFromHVDB = async (id, work) => {
 };
 
 /**
- * Scrapes work metadata from DLsite, preferring the legacy work page.
+ * Scrapes work metadata from DLsite.
  * @param {number} id Work id.
- * @param {String} language 标签语言，'ja-jp', 'zh-tw' or 'zh-cn'，默认'zh-cn'
+ * @param {String} language 标签语言，'ja-JP', 'zh-TW' or 'zh-CN'，默认'zh-CN'
+ * @param {Object} options { source: 'product' | 'html' }，默认使用 product.json
  */
-const scrapeWorkMetadataFromDLsite = (id, language) => {
+const scrapeWorkMetadataFromDLsite = (id, language, options = {}) => {
   const rjLabel = formatRJLabel(id);
+  const source = options.source || STATIC_METADATA_SOURCES.PRODUCT;
+  let scrapeStaticMetadata;
+
+  switch (source) {
+    case STATIC_METADATA_SOURCES.PRODUCT:
+      scrapeStaticMetadata = scrapeProductWorkMetadataFromDLsite;
+      break;
+    case STATIC_METADATA_SOURCES.HTML:
+      scrapeStaticMetadata = scrapeHtmlWorkMetadataFromDLsite;
+      break;
+    default:
+      return Promise.reject(new Error(`Unknown DLsite metadata source: ${source}.`));
+  }
 
   return Promise.all([
-    scrapeStaticWorkMetadataFromDLsite(id, language),
+    scrapeStaticMetadata(id, language),
     scrapeDynamicWorkMetadataFromDLsite(id).catch((error) => {
       // 动态接口只负责补充销量/评论等字段，失败时继续使用静态数据。
       console.warn(`[${rjLabel}] DLsite 动态元数据抓取失败，继续使用静态数据: ${error.message}`);
@@ -264,5 +454,7 @@ const scrapeWorkMetadataFromDLsite = (id, language) => {
 
 
 module.exports = {
-  scrapeWorkMetadataFromDLsite
+  scrapeWorkMetadataFromDLsite,
+  scrapeHtmlWorkMetadataFromDLsite,
+  scrapeProductWorkMetadataFromDLsite
 };

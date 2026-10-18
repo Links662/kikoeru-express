@@ -42,7 +42,7 @@ const defaultConfig = {
   expiresIn: 2592000,
   scannerMaxRecursionDepth: 2,
   pageSize: 12,
-  tagLanguage: 'zh-cn',
+  tagLanguage: 'zh-CN',
   retry: 5,
   dlsiteTimeout: 10000,
   hvdbTimeout: 10000,

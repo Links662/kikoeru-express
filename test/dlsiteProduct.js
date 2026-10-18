@@ -6,17 +6,18 @@ const path = require('path');
 
 const scraperAxios = require('../scraper/axios');
 const {
-  buildProductApiUrl,
-  localeFromTagLanguage,
-  parseProductResponse
-} = require('../scraper/dlsiteProduct');
-const {
+  scrapeProductWorkMetadataFromDLsite,
   scrapeWorkMetadataFromDLsite
 } = require('../scraper/dlsite');
 
 const loadFixture = name => JSON.parse(
   fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8')
 );
+
+const scrapeProductFixture = async (name, id, language = 'ja-JP') => {
+  scraperAxios.retryGet = async () => ({ data: loadFixture(name) });
+  return scrapeProductWorkMetadataFromDLsite(id, language);
+};
 
 describe('DLsite metadata scraping', function () {
   const originalRetryGet = scraperAxios.retryGet;
@@ -25,30 +26,38 @@ describe('DLsite metadata scraping', function () {
     scraperAxios.retryGet = originalRetryGet;
   });
 
-  it('builds the product API URL with the configured locale', function () {
-    expect(buildProductApiUrl('RJ01171233', 'ja-JP')).to.equal(
+  it('requests product.json with the configured locale', async function () {
+    const calls = [];
+    scraperAxios.retryGet = async (url) => {
+      calls.push(url);
+      return { data: loadFixture('dlsite-product-rj01171233.json') };
+    };
+
+    await scrapeProductWorkMetadataFromDLsite(1171233, 'ja-JP');
+
+    expect(calls).to.deep.equal([
       'https://www.dlsite.com/maniax/api/=/product.json?workno=RJ01171233&locale=ja-JP'
-    );
-    expect(buildProductApiUrl('RJ01171233', 'zh-CN')).to.equal(
-      'https://www.dlsite.com/maniax/api/=/product.json?workno=RJ01171233&locale=zh-CN'
-    );
-    expect(buildProductApiUrl('RJ01171233', '')).to.equal(
-      'https://www.dlsite.com/maniax/api/=/product.json?workno=RJ01171233'
-    );
+    ]);
   });
 
-  it('maps tagLanguage values to product API locales', function () {
-    expect(localeFromTagLanguage('ja-jp')).to.equal('ja-JP');
-    expect(localeFromTagLanguage('zh-tw')).to.equal('zh-TW');
-    expect(localeFromTagLanguage('zh-cn')).to.equal('zh-CN');
-    expect(localeFromTagLanguage(undefined)).to.equal('zh-CN');
+  it('rejects a tag language outside the configured values', async function () {
+    scraperAxios.retryGet = async () => {
+      throw new Error('request should not be sent with an invalid locale');
+    };
+
+    let error;
+    try {
+      await scrapeProductWorkMetadataFromDLsite(1171233, 'ja-jp');
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).to.be.an('error');
+    expect(error.message).to.equal('Unsupported DLsite tag language: ja-jp.');
   });
 
-  it('maps title, circle, tags, voice actors and release date', function () {
-    const work = parseProductResponse(
-      loadFixture('dlsite-product-rj01171233.json'),
-      1171233
-    );
+  it('maps title, circle, tags, voice actors and release date', async function () {
+    const work = await scrapeProductFixture('dlsite-product-rj01171233.json', 1171233);
 
     expect(work.title).to.equal('NoTitle');
     expect(work.circle).to.deep.equal({ id: 62782, name: 'つばめいと' });
@@ -59,11 +68,8 @@ describe('DLsite metadata scraping', function () {
     expect(work.vas.map(va => va.name)).to.deep.equal(['柚木つばめ']);
   });
 
-  it('maps price, rating distribution and rank fields', function () {
-    const work = parseProductResponse(
-      loadFixture('dlsite-product-rj01171233.json'),
-      1171233
-    );
+  it('maps price, rating distribution and rank fields', async function () {
+    const work = await scrapeProductFixture('dlsite-product-rj01171233.json', 1171233);
 
     expect(work.price).to.equal(550);
     expect(work.rate_count).to.equal(3264);
@@ -81,11 +87,8 @@ describe('DLsite metadata scraping', function () {
     expect(work.rank.find(entry => entry.term === 'total').rank).to.equal(1170);
   });
 
-  it('maps discounted prices and multiple tags from another response', function () {
-    const work = parseProductResponse(
-      loadFixture('dlsite-product-rj01732076.json'),
-      1732076
-    );
+  it('maps discounted prices and multiple tags from another response', async function () {
+    const work = await scrapeProductFixture('dlsite-product-rj01732076.json', 1732076);
 
     expect(work.title).to.equal(
       '【オホ声】絶対にヤッてはいけない地雷系サークルクラッシャーちゃん～濃厚ザーメンで子作り共依存エッチ♡～'
@@ -99,31 +102,37 @@ describe('DLsite metadata scraping', function () {
     expect(work.rank.find(entry => entry.term === 'week').rank).to.equal(146);
   });
 
-  it('maps adult and all-ages product categories', function () {
+  it('maps adult and all-ages product categories', async function () {
     const item = loadFixture('dlsite-product-rj01171233.json')[0];
-    const allAges = parseProductResponse([{
+    scraperAxios.retryGet = async () => ({ data: [{
       ...item,
       age_category: 1,
       age_category_string: 'all'
-    }], 1171233);
-    const adult = parseProductResponse([{
+    }] });
+    const allAges = await scrapeProductWorkMetadataFromDLsite(1171233, 'ja-JP');
+
+    scraperAxios.retryGet = async () => ({ data: [{
       ...item,
       age_category: 3,
       age_category_string: 'adult'
-    }], 1171233);
+    }] });
+    const adult = await scrapeProductWorkMetadataFromDLsite(1171233, 'ja-JP');
 
     expect(allAges.nsfw).to.equal(false);
     expect(adult.nsfw).to.equal(true);
-    expect(parseProductResponse([{
+
+    scraperAxios.retryGet = async () => ({ data: [{
       ...item,
       age_category: undefined,
       age_category_string: undefined
-    }], 1171233).nsfw).to.equal(true);
+    }] });
+    const unknown = await scrapeProductWorkMetadataFromDLsite(1171233, 'ja-JP');
+    expect(unknown.nsfw).to.equal(true);
   });
 
-  it('keeps delisted works when optional fields are missing', function () {
+  it('keeps delisted works when optional fields are missing', async function () {
     const item = loadFixture('dlsite-product-rj01171233.json')[0];
-    const work = parseProductResponse([{
+    scraperAxios.retryGet = async () => ({ data: [{
       ...item,
       on_sale: 0,
       price: 0,
@@ -135,7 +144,8 @@ describe('DLsite metadata scraping', function () {
       rank_month: null,
       rank_year: null,
       rank_total: null
-    }], 1171233);
+    }] });
+    const work = await scrapeProductWorkMetadataFromDLsite(1171233, 'ja-JP');
 
     expect(work.title).to.equal('NoTitle');
     expect(work.circle).to.deep.equal({ id: 62782, name: 'つばめいと' });
@@ -146,20 +156,21 @@ describe('DLsite metadata scraping', function () {
     expect(work.rank).to.equal(null);
   });
 
-  it('accepts an object response as well as the usual array', function () {
+  it('accepts an object response as well as the usual array', async function () {
     const item = loadFixture('dlsite-product-rj01171233.json')[0];
-    const work = parseProductResponse(item, 1171233);
+    scraperAxios.retryGet = async () => ({ data: item });
+    const work = await scrapeProductWorkMetadataFromDLsite(1171233, 'ja-JP');
 
     expect(work.title).to.equal('NoTitle');
     expect(work.circle.id).to.equal(62782);
   });
 
-  it('uses product.json as a fallback and merges optional dynamic statistics', async function () {
+  it('uses product.json by default and merges optional dynamic statistics', async function () {
     const calls = [];
     scraperAxios.retryGet = async (url) => {
       calls.push(url);
       if (url.includes('/work/=/product_id/')) {
-        throw new Error('legacy page unavailable');
+        throw new Error('legacy page must not be requested');
       }
       if (url.startsWith('https://www.dlsite.com/maniax/api/=')) {
         return { data: loadFixture('dlsite-product-rj01171233.json') };
@@ -178,17 +189,38 @@ describe('DLsite metadata scraping', function () {
       throw new Error('unexpected request');
     };
 
-    const work = await scrapeWorkMetadataFromDLsite(1171233, 'ja-jp');
+    const work = await scrapeWorkMetadataFromDLsite(1171233, 'ja-JP');
 
-    expect(calls).to.include(
-      'https://www.dlsite.com/maniax/work/=/product_id/RJ01171233.html'
-    );
     expect(calls).to.include(
       'https://www.dlsite.com/maniax/api/=/product.json?workno=RJ01171233&locale=ja-JP'
     );
+    expect(calls.some(url => url.includes('/work/=/product_id/'))).to.equal(false);
     expect(work.title).to.equal('NoTitle');
+    expect(work.release).to.equal('2024-04-01');
     expect(work.dl_count).to.equal(1234);
     expect(work.review_count).to.equal(12);
+  });
+
+  it('does not fall back to the legacy page when product.json fails', async function () {
+    const calls = [];
+    scraperAxios.retryGet = async (url) => {
+      calls.push(url);
+      if (url.startsWith('https://www.dlsite.com/maniax/api/=')) {
+        throw new Error('product API unavailable');
+      }
+      throw new Error('unexpected legacy page request');
+    };
+
+    let error;
+    try {
+      await scrapeWorkMetadataFromDLsite(1171233, 'ja-JP');
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).to.be.an('error');
+    expect(error.message).to.equal('product API unavailable');
+    expect(calls.some(url => url.includes('/work/=/product_id/'))).to.equal(false);
   });
 
   it('keeps a delisted work when dynamic and HVDB enrichment fail', async function () {
@@ -209,14 +241,14 @@ describe('DLsite metadata scraping', function () {
       throw new Error('not available');
     };
 
-    const work = await scrapeWorkMetadataFromDLsite(1171233, 'zh-cn');
+    const work = await scrapeWorkMetadataFromDLsite(1171233, 'zh-CN');
 
     expect(work.title).to.equal('NoTitle');
     expect(work.vas).to.deep.equal([]);
     expect(work.tags).to.have.length(7);
   });
 
-  it('uses the legacy page first and skips product.json when it succeeds', async function () {
+  it('keeps the legacy HTML parser available as an explicit mode', async function () {
     const legacyPage = `
       <html>
         <head>
@@ -255,7 +287,7 @@ describe('DLsite metadata scraping', function () {
       throw new Error('unexpected request');
     };
 
-    const work = await scrapeWorkMetadataFromDLsite(1171233, 'ja-jp');
+    const work = await scrapeWorkMetadataFromDLsite(1171233, 'ja-JP', { source: 'html' });
 
     expect(work.title).to.equal('NoTitle');
     expect(work.tags).to.deep.equal([{ id: 497, name: 'ASMR' }]);

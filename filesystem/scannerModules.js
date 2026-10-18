@@ -170,7 +170,7 @@ const uniqueArr = (arr) => {
  * @param {number} id work id
  * @param {string} rootFolderName 根文件夹别名
  * @param {string} dir 音声文件夹相对路径
- * @param {string} tagLanguage 标签语言，'ja-jp', 'zh-tw' or 'zh-cn'，默认'zh-cn'
+ * @param {string} tagLanguage 标签语言，'ja-JP', 'zh-TW' or 'zh-CN'，默认'zh-CN'
  */
 const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
   const rjLabel = formatRJLabel(id);
