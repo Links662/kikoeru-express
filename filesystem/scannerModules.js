@@ -21,8 +21,6 @@ const {
   hasLrc
 } = require('./utils');
 const { formatRJLabel } = require('../utils/workId');
-const { nameToUUID } = require('../scraper/utils');
-
 const { config } = require('../config');
 
 // 只有在子进程中 process 对象才有 send() 方法
@@ -763,8 +761,6 @@ const updateMetadata = (id, options = {}) => {
 };
 
 const updateMetadataLimited = (id, options = null) => limitP.call(updateMetadata, id, options);
-const updateVoiceActorLimited = (id) => limitP.call(updateMetadata, id, { includeVA: true });
-
 const scanSubtitleForWork = async (work, counts) => {
   const rjLabel = formatRJLabel(work.id);
   const rootFolder = config.rootFolders.find(folder => folder.name === work.root_folder);
@@ -819,7 +815,6 @@ const performSubtitleScan = async () => {
   process.exit(counts.failed ? 1 : 0);
 };
 
-// eslint-disable-next-line no-unused-vars
 const performUpdate = async (options = null) => {
   const baseQuery = db.knex('t_work').select('id');
   const processor = (id) => updateMetadataLimited(id, options);
@@ -836,14 +831,6 @@ const performUpdate = async (options = null) => {
   });
   db.knex.destroy();
   if (counts.failed) process.exit(1);
-};
-
-// eslint-disable-next-line no-unused-vars
-const fixVoiceActorBug = () => {
-  const baseQuery = db.knex('r_va_work').select('va_id', 'work_id');
-  const filter = (query) => query.where('va_id', nameToUUID('かの仔')).orWhere('va_id', nameToUUID('こっこ'));
-  const processor = (id) => updateVoiceActorLimited(id);
-  return refreshWorks(filter(baseQuery), 'work_id', processor);
 };
 
 const refreshWorks = async (query, idColumnName, processor) => {

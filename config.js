@@ -131,22 +131,6 @@ const readConfig = () => {
   }
 };
 
-const updateConfig = (writeConfigToFile = !process.env.FREEZE_CONFIG_FILE) => {
-  let cfg = JSON.parse(fs.readFileSync(configPath));
-  let countChanged = 0;
-  for (let key in defaultConfig) {
-    if (!cfg.hasOwnProperty(key)) {
-      console.log('写入设置', key);
-      cfg[key] = defaultConfig[key];
-      countChanged += 1;
-    }
-  }
-  if (countChanged || cfg.version !== pjson.version) {
-    cfg.version = pjson.version;
-    setConfig(cfg, writeConfigToFile)
-  }
-}
-
 class publicConfig {
   get rewindSeekTime() {
     return config.rewindSeekTime;
@@ -185,5 +169,5 @@ function getPageSize() {
 }
 
 module.exports = {
-  setConfig, updateConfig, config, sharedConfigHandle, configFolderDir, getPageSize
+  setConfig, config, sharedConfigHandle, getPageSize
 };

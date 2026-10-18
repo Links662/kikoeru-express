@@ -296,8 +296,7 @@ const searchWorks = async (req, res, next) => {
   }
 };
 
-// express 5 不支持 '/search/:keyword?' 这种可选参数，拆成带/不带关键字两条路由
-router.get('/search', ...workListValidators(), searchWorks);
+// 关键字必填；不带关键字时前端使用 /api/works。
 router.get('/search/:keyword', ...workListValidators(), searchWorks);
 
 router.get('/:fields/:id/works',

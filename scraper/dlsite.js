@@ -220,6 +220,5 @@ const scrapeWorkMetadataFromDLsite = (id, language) => {
 
 
 module.exports = {
-  scrapeWorkMetadataFromDLsite,
-  scrapeDynamicWorkMetadataFromDLsite
+  scrapeWorkMetadataFromDLsite
 };

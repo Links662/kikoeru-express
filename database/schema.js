@@ -138,4 +138,4 @@ const initDatabase = async () => {
   }
 };
 
-module.exports = { initDatabase, createView, dbVersion };
+module.exports = { initDatabase };
