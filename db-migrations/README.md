@@ -18,3 +18,15 @@
 - 删除 `r_tag_work` 中 `tag_id=-1` 的旧关联。
 - 删除 `t_tag` 中 `id=-1` 的“中文字幕”伪标签。
 - 不迁移、不回填旧伪标签对应的字幕状态。
+
+## 20261018 - 简化 staticMetadata 社团字段
+
+迁移文件：`20261018_replace_circle_obj_with_circle_name.sql`
+
+执行前提：先执行 `20261018_add_work_subtitle.sql`。
+
+### 结构变更
+
+- `staticMetadata` 视图移除 `circleObj` JSON 聚合列。
+- 使用 `circle_name` 提供社团名称，`circle_id` 继续提供社团 ID。
+- API 归一化仍输出 `metadata.circle = { id, name }`，接口结构不变。
