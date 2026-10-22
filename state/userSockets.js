@@ -29,6 +29,27 @@ const unregisterUserSocket = (userName, socket) => {
 };
 
 /**
+ * 向指定账号当前打开的所有 socket 推送事件。
+ * @param {String} userName 用户名
+ * @param {String} event 事件名
+ * @param {*} payload 事件内容
+ * @returns {Number} 实际发送到的连接数
+ */
+const emitToUser = (userName, event, payload) => {
+  const sockets = socketsByUser.get(userName);
+  if (sockets === undefined) return 0;
+
+  let sent = 0;
+  for (const socket of sockets) {
+    // 断线到 disconnect 回调执行之间可能还有一小段窗口，不再往这些连接塞消息
+    if (socket.connected === false) continue;
+    socket.emit(event, payload);
+    sent += 1;
+  }
+  return sent;
+};
+
+/**
  * 断开指定账号的所有 socket
  * @param {String|String[]} names 用户名或用户名数组
  */
@@ -47,4 +68,9 @@ const closeUserSockets = (names) => {
   }
 };
 
-module.exports = { registerUserSocket, unregisterUserSocket, closeUserSockets };
+module.exports = {
+  registerUserSocket,
+  unregisterUserSocket,
+  emitToUser,
+  closeUserSockets
+};
