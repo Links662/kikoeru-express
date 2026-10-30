@@ -97,7 +97,7 @@ router.get('/recent',
   }
 );
 
-router.get('/deleteRecent',
+router.delete('/recent',
   async (req, res) => {
     if (!isValidRequest(req, res)) return;
     const username = config.auth ? req.user.name : 'admin';
