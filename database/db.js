@@ -306,12 +306,89 @@ const removeWork = async (id, trxProvider) => {
 };
 
 /**
- * Returns list of works by circle, tag or VA.
- * @param {Number} id Which id to filter by.
- * @param {String} field Which field to filter by.
+ * 给作品查询附加社团、标签、声优和关键词条件。
+ * 不同类别之间是 AND；同一类别中的多个 ID 是 OR。
+ * 标签和声优使用关联子查询，避免多个 JOIN 产生重复作品。
+ */
+const applyWorkConditions = (query, {
+  circleIds = [],
+  tagIds = [],
+  vaIds = [],
+  keyword = ''
+} = {}) => {
+  if (circleIds.length) {
+    query.whereIn('staticMetadata.circle_id', circleIds);
+  }
+
+  if (tagIds.length) {
+    query.whereExists(function () {
+      this.select(1)
+        .from('r_tag_work')
+        .whereRaw('r_tag_work.work_id = staticMetadata.id')
+        .whereIn('r_tag_work.tag_id', tagIds);
+    });
+  }
+
+  if (vaIds.length) {
+    query.whereExists(function () {
+      this.select(1)
+        .from('r_va_work')
+        .whereRaw('r_va_work.work_id = staticMetadata.id')
+        .whereIn('r_va_work.va_id', vaIds);
+    });
+  }
+
+  const normalizedKeyword = typeof keyword === 'string' ? keyword.trim() : '';
+  if (!normalizedKeyword) return query;
+
+  const workIdMatch = normalizedKeyword.match(/((R|r)(J|j))?(\d+)/);
+  if (workIdMatch) {
+    return query.where('staticMetadata.id', '=', workIdMatch[4]);
+  }
+
+  const pattern = `%${normalizedKeyword}%`;
+  return query.where(function () {
+    this.where('staticMetadata.title', 'like', pattern)
+      .orWhereExists(function () {
+        this.select(1)
+          .from('t_circle')
+          .whereRaw('t_circle.id = staticMetadata.circle_id')
+          .andWhere('t_circle.name', 'like', pattern);
+      })
+      .orWhereExists(function () {
+        this.select(1)
+          .from('r_tag_work')
+          .join('t_tag', 't_tag.id', 'r_tag_work.tag_id')
+          .whereRaw('r_tag_work.work_id = staticMetadata.id')
+          .andWhere('t_tag.name', 'like', pattern);
+      })
+      .orWhereExists(function () {
+        this.select(1)
+          .from('r_va_work')
+          .join('t_va', 't_va.id', 'r_va_work.va_id')
+          .whereRaw('r_va_work.work_id = staticMetadata.id')
+          .andWhere('t_va.name', 'like', pattern);
+      });
+  });
+};
+
+/**
+ * Returns list of works matching all provided condition groups.
+ * @param {Array} circleIds Circle IDs. Multiple values are ORed.
+ * @param {Array} tagIds Tag IDs. Multiple values are ORed.
+ * @param {Array} vaIds VA IDs. Multiple values are ORed.
+ * @param {String} keyword Free-text keyword.
  * @param {String} username Include this user's rating, progress and note.
  */
-const getWorksBy = ({ id, field, username, nsfw, subtitle } = {}) => {
+const getWorksByConditions = ({
+  circleIds = [],
+  tagIds = [],
+  vaIds = [],
+  keyword = '',
+  username,
+  nsfw,
+  subtitle
+} = {}) => {
   let baseQuery = knex('staticMetadata').select('staticMetadata.*');
 
   if (username) {
@@ -337,75 +414,26 @@ const getWorksBy = ({ id, field, username, nsfw, subtitle } = {}) => {
   }
 
   baseQuery = applyWorkFilters(baseQuery, { nsfw, subtitle });
-
-  switch (field) {
-    case 'circle':
-      return baseQuery.where('circle_id', id);
-
-    case 'tag':
-      return baseQuery
-        .join('r_tag_work', 'r_tag_work.work_id', 'staticMetadata.id')
-        .where('r_tag_work.tag_id', id);
-
-    case 'va':
-      return baseQuery
-        .join('r_va_work', 'r_va_work.work_id', 'staticMetadata.id')
-        .where('r_va_work.va_id', id);
-
-    default:
-      return baseQuery;
-  }
+  return applyWorkConditions(baseQuery, { circleIds, tagIds, vaIds, keyword });
 };
 
 /**
- * 根据关键字查询音声
- * @param {String} keyword
+ * Resolve display names for selected filter IDs without loading every label.
  */
-const getWorksByKeyWord = ({keyword, username = 'admin', nsfw, subtitle} = {}) => {
-  const ratingSubQuery = knex('t_review')
-  .select([
-    't_review.work_id',
-    't_review.rating',
-    't_review.review_text AS reviewText',
-    't_review.progress',
-    knex.raw("strftime('%Y-%m-%d %H:%M:%S', t_review.updated_at, 'localtime') AS updatedAt")
-  ])
-  .join('t_work', 't_work.id', 't_review.work_id')
-  .where('t_review.user_name', username).as('userrate')
-
-  const baseQuery = () => applyWorkFilters(
-    knex('staticMetadata').select([
-      'staticMetadata.*',
-      'userrate.rating',
-      'userrate.reviewText',
-      'userrate.progress',
-      'userrate.updatedAt'
-    ])
-      .leftJoin(ratingSubQuery, 'userrate.work_id', 'staticMetadata.id'),
-    { nsfw, subtitle }
-  )
-
-  const workid = keyword.match(/((R|r)(J|j))?(\d+)/) ? keyword.match(/((R|r)(J|j))?(\d+)/)[4] : '';
-  if (workid) {
-    return baseQuery().where('id', '=', workid);
-  }
-
-  const circleIdQuery = knex('t_circle').select('id').where('name', 'like', `%${keyword}%`);
-
-  const tagIdQuery = knex('t_tag').select('id').where('name', 'like', `%${keyword}%`);
-  const vaIdQuery = knex('t_va').select('id').where('name', 'like', `%${keyword}%`);
-
-  const workIdQuery = knex('r_tag_work').select('work_id').where('tag_id', 'in', tagIdQuery).union([
-    knex('r_va_work').select('work_id').where('va_id', 'in', vaIdQuery)
+const getWorkConditionLabels = async ({ circleIds = [], tagIds = [], vaIds = [] } = {}) => {
+  const [circles, tags, vas] = await Promise.all([
+    circleIds.length
+      ? knex('t_circle').select('id', 'name').whereIn('id', circleIds).orderBy('name')
+      : [],
+    tagIds.length
+      ? knex('t_tag').select('id', 'name').whereIn('id', tagIds).orderBy('name')
+      : [],
+    vaIds.length
+      ? knex('t_va').select('id', 'name').whereIn('id', vaIds).orderBy('name')
+      : []
   ]);
 
-
-  // 关键字条件必须整体分组，否则后面附加的筛选条件只会作用于最后一个 OR 分支。
-  return baseQuery().where(function () {
-    this.where('title', 'like', `%${keyword}%`)
-      .orWhere('circle_id', 'in', circleIdQuery)
-      .orWhere('id', 'in', workIdQuery);
-  });
+  return { circles, tags, vas };
 };
 
 /**
@@ -770,7 +798,8 @@ const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) 
 })
 
 module.exports = {
-  knex, applyWorkFilters, insertWorkMetadata, getWorkMetadata, removeWork, getWorksBy, getWorksByKeyWord,
+  knex, applyWorkFilters, applyWorkConditions, insertWorkMetadata, getWorkMetadata, removeWork,
+  getWorksByConditions, getWorkConditionLabels,
   applyWorkMetadataUpdate, updateWorkMetadata,
   updateWorkSubtitle,
   getLabels, getMetadata, getFavourites, setFavourite,

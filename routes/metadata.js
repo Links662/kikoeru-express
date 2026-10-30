@@ -9,7 +9,7 @@ const normalize = require('./utils/normalize')
 const { isValidRequest } = require('./utils/validate');
 
 // express 5 的 path-to-regexp v8 不再支持 '/:field(circle|tag|va)s/:id' 这类正则参数，
-// 也不再支持 '/search/:keyword?' 这类可选参数，因此改成通用参数 + 校验：
+// 因此社团、标签和声优共用通用参数，再通过校验映射到具体字段：
 // mapFieldParam 负责把 circles/tags/vas 归一化成 req.params.field，
 // 非法值用 next('route') 跳过（等价于旧写法里正则不匹配时交给后续路由处理）。
 const FIELD_PARAMS = { circles: 'circle', tags: 'tag', vas: 'va' };
@@ -25,13 +25,51 @@ const WORK_ORDER_FIELDS = [
   'betterRandom'
 ];
 
+const MAX_CONDITIONS_PER_TYPE = 10;
+const MAX_TOTAL_CONDITIONS = 20;
+const MAX_CONDITION_ID_LENGTH = 128;
+
+const parseConditionIds = (...values) => {
+  const ids = values
+    .flatMap(value => Array.isArray(value) ? value : [value])
+    .flatMap(value => String(value || '').split(','))
+    .map(value => value.trim())
+    .filter(Boolean);
+  return [...new Set(ids)];
+};
+
+const conditionListValidator = (field, numeric) => query(field)
+  .optional({ nullable: true })
+  .custom(value => {
+    const values = Array.isArray(value) ? value : [value];
+    if (values.some(item => typeof item !== 'string')) {
+      throw new Error(`${field} 格式无效`);
+    }
+
+    const ids = parseConditionIds(value);
+    if (ids.length > MAX_CONDITIONS_PER_TYPE) {
+      throw new Error(`${field} 最多允许 ${MAX_CONDITIONS_PER_TYPE} 个条件`);
+    }
+    if (ids.some(id => id.length > MAX_CONDITION_ID_LENGTH)) {
+      throw new Error(`${field} 包含过长的条件值`);
+    }
+    if (numeric && ids.some(id => !/^\d+$/.test(id))) {
+      throw new Error(`${field} 必须是整数 ID`);
+    }
+    return true;
+  });
+
 const workListValidators = () => [
   query('page').optional({ nullable: true }).isInt(),
   query('sort').optional({ nullable: true }).isIn(['desc', 'asc']),
   query('seed').optional({ nullable: true }).isInt(),
   query('order').optional({ nullable: true }).isIn(WORK_ORDER_FIELDS),
   query('nsfw').optional({ nullable: true }).isIn(['true', 'false']),
-  query('subtitle').optional({ nullable: true }).isIn(['true', 'false'])
+  query('subtitle').optional({ nullable: true }).isIn(['true', 'false']),
+  conditionListValidator('circleIds', true),
+  conditionListValidator('tagIds', true),
+  conditionListValidator('vaIds', false),
+  query('keyword').optional({ nullable: true }).isString().trim().isLength({ max: 200 })
 ];
 
 const parseBooleanQuery = value => {
@@ -44,6 +82,29 @@ const parseWorkFilters = req => ({
   nsfw: parseBooleanQuery(req.query.nsfw),
   subtitle: parseBooleanQuery(req.query.subtitle)
 });
+
+const parseWorkConditions = req => ({
+  circleIds: parseConditionIds(req.query.circleIds),
+  tagIds: parseConditionIds(req.query.tagIds),
+  vaIds: parseConditionIds(req.query.vaIds),
+  keyword: typeof req.query.keyword === 'string' ? req.query.keyword.trim() : ''
+});
+
+const validateWorkConditionCount = (req, res, next) => {
+  const conditions = parseWorkConditions(req);
+  const count = conditions.circleIds.length +
+    conditions.tagIds.length +
+    conditions.vaIds.length +
+    (conditions.keyword ? 1 : 0);
+
+  if (count > MAX_TOTAL_CONDITIONS) {
+    res.status(400).send({
+      error: `最多同时选择 ${MAX_TOTAL_CONDITIONS} 个筛选条件`
+    });
+    return;
+  }
+  next();
+};
 
 const countWorks = async query => {
   const result = await query
@@ -149,6 +210,7 @@ router.get('/tracks/:id',
 
 router.get('/works',
   ...workListValidators(),
+  validateWorkConditionCount,
   async (req, res) => {
     if (!isValidRequest(req, res)) return;
 
@@ -159,9 +221,10 @@ router.get('/works',
     const shuffleSeed = req.query.seed ? req.query.seed : 7;
     const username = config.auth ? req.user.name : 'admin';
     const filters = parseWorkFilters(req);
+    const conditions = parseWorkConditions(req);
 
     try {
-      const baseQuery = () => db.getWorksBy({ username, ...filters });
+      const baseQuery = () => db.getWorksByConditions({ username, ...filters, ...conditions });
       const totalCount = await countWorks(baseQuery());
       let works;
 
@@ -199,6 +262,22 @@ router.get('/works',
     } catch (err) {
       console.error(err);
       res.status(500).send({ error: '服务器错误' });
+    }
+  });
+
+router.get('/work-filter-labels',
+  conditionListValidator('circleIds', true),
+  conditionListValidator('tagIds', true),
+  conditionListValidator('vaIds', false),
+  validateWorkConditionCount,
+  async (req, res, next) => {
+    if (!isValidRequest(req, res)) return;
+
+    try {
+      const labels = await db.getWorkConditionLabels(parseWorkConditions(req));
+      res.send(labels);
+    } catch (err) {
+      next(err);
     }
   });
 
@@ -252,101 +331,6 @@ router.put('/:fields/:id/favourite',
         }
       })
       .catch(err => next(err));
-});
-
-// eslint-disable-next-line no-unused-vars
-const searchWorks = async (req, res, next) => {
-  const keyword = req.params.keyword ? req.params.keyword.trim() : '';
-  const currentPage = parseInt(req.query.page) || 1;
-  const order = req.query.order || 'release';
-  const sort = req.query.sort || 'desc';
-  const offset = (currentPage - 1) * getPageSize();
-  const username = config.auth ? req.user.name : 'admin';
-  const shuffleSeed = req.query.seed ? req.query.seed : 7;
-  const filters = parseWorkFilters(req);
-
-  if (!isValidRequest(req, res)) return;
-  
-  try {
-    const query = () => db.getWorksByKeyWord({ keyword, username, ...filters });
-    const totalCount = await countWorks(query());
-
-    let works = null;
-
-    if (order === 'random') {
-      works = await query().offset(offset).limit(getPageSize()).orderBy(db.knex.raw('id % ?', shuffleSeed));
-    } else {
-      works = await query().offset(offset).limit(getPageSize()).orderBy(order, sort)
-        .orderBy([{ column: 'release', order: 'desc'}, { column: 'id', order: 'desc' }])
-    }
-
-    works = normalize(works);
-
-    res.send({
-      works,
-      pagination: {
-        currentPage,
-        pageSize: getPageSize(),
-        totalCount
-      }
-    });
-  } catch(err) {
-    res.status(500).send({error: '查询过程中出错'});
-    console.error(err);
-  }
-};
-
-// 关键字必填；不带关键字时前端使用 /api/works。
-router.get('/search/:keyword', ...workListValidators(), searchWorks);
-
-router.get('/:fields/:id/works',
-  mapFieldParam,
-  param('fields').isIn(FIELD_PARAM_VALUES),
-  ...workListValidators(),
-  // eslint-disable-next-line no-unused-vars
-  async (req, res, next) => {
-    if(!isValidRequest(req, res)) return;
-
-    const currentPage = parseInt(req.query.page) || 1;
-    const order = req.query.order || 'release';
-    const sort = req.query.sort || 'desc';
-    const offset = (currentPage - 1) * getPageSize();
-    const shuffleSeed = req.query.seed ? req.query.seed : 7;
-    const username = config.auth ? req.user.name : 'admin';
-    const filters = parseWorkFilters(req);
-
-    try {
-      const query = () => db.getWorksBy({
-        id: req.params.id,
-        field: req.params.field,
-        username,
-        ...filters
-      });
-      const totalCount = await countWorks(query());
-
-      let works = null;
-
-      if (order === 'random') {
-        works = await query().offset(offset).limit(getPageSize()).orderBy(db.knex.raw('id % ?', shuffleSeed));
-      } else {
-        works = await query().offset(offset).limit(getPageSize()).orderBy(order, sort)
-        .orderBy([{ column: 'release', order: 'desc'}, { column: 'id', order: 'desc' }])
-      }
-
-      works = normalize(works);
-
-      res.send({
-        works,
-        pagination: {
-          currentPage,
-          pageSize: getPageSize(),
-          totalCount
-        }
-      });
-    } catch(err) {
-      res.status(500).send({error: '查询过程中出错'});
-      console.error(err);
-    }
 });
 
 router.get('/:fields',

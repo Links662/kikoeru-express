@@ -6,7 +6,7 @@ const path = require('path');
 const sqlite3 = require('sqlite3');
 const knexFactory = require('knex');
 
-const { applyWorkFilters } = require('../database/db');
+const { applyWorkFilters, applyWorkConditions } = require('../database/db');
 
 const migrationPath = path.join(
   __dirname,
@@ -33,17 +33,67 @@ describe('work filters', function () {
       useNullAsDefault: true
     });
 
-    await knex.schema.createTable('staticMetadata', table => {
-      table.integer('id');
-      table.boolean('nsfw');
-      table.boolean('subtitle');
-    });
+    await knex.schema
+      .createTable('staticMetadata', table => {
+        table.integer('id');
+        table.string('title');
+        table.integer('circle_id');
+        table.boolean('nsfw');
+        table.boolean('subtitle');
+      })
+      .createTable('t_circle', table => {
+        table.integer('id');
+        table.string('name');
+      })
+      .createTable('t_tag', table => {
+        table.integer('id');
+        table.string('name');
+      })
+      .createTable('t_va', table => {
+        table.string('id');
+        table.string('name');
+      })
+      .createTable('r_tag_work', table => {
+        table.integer('tag_id');
+        table.integer('work_id');
+      })
+      .createTable('r_va_work', table => {
+        table.string('va_id');
+        table.integer('work_id');
+      });
 
+    await knex('t_circle').insert([
+      { id: 1, name: 'circle one' },
+      { id: 2, name: 'circle two' }
+    ]);
+    await knex('t_tag').insert([
+      { id: 1, name: 'sleep' },
+      { id: 2, name: 'asmr' },
+      { id: 3, name: 'voice' }
+    ]);
+    await knex('t_va').insert([
+      { id: 'v1', name: 'alice' },
+      { id: 'v2', name: 'bob' }
+    ]);
     await knex('staticMetadata').insert([
-      { id: 1, nsfw: false, subtitle: false },
-      { id: 2, nsfw: false, subtitle: true },
-      { id: 3, nsfw: true, subtitle: true },
-      { id: 4, nsfw: true, subtitle: false }
+      { id: 1, title: 'Alpha sleep', circle_id: 1, nsfw: false, subtitle: false },
+      { id: 2, title: 'Beta asmr', circle_id: 1, nsfw: false, subtitle: true },
+      { id: 3, title: 'Gamma alice', circle_id: 2, nsfw: true, subtitle: true },
+      { id: 4, title: 'Delta sleep', circle_id: 2, nsfw: true, subtitle: false }
+    ]);
+    await knex('r_tag_work').insert([
+      { tag_id: 1, work_id: 1 },
+      { tag_id: 2, work_id: 1 },
+      { tag_id: 2, work_id: 2 },
+      { tag_id: 3, work_id: 3 },
+      { tag_id: 1, work_id: 4 },
+      { tag_id: 3, work_id: 4 }
+    ]);
+    await knex('r_va_work').insert([
+      { va_id: 'v1', work_id: 1 },
+      { va_id: 'v2', work_id: 2 },
+      { va_id: 'v1', work_id: 3 },
+      { va_id: 'v2', work_id: 4 }
     ]);
   });
 
@@ -77,6 +127,64 @@ describe('work filters', function () {
 
   it('combines nsfw and subtitle filters', async function () {
     expect(await getIds({ nsfw: true, subtitle: true })).to.deep.equal([3]);
+  });
+
+  const getConditionIds = async (conditions, filters = {}) => {
+    const rows = await applyWorkConditions(
+      applyWorkFilters(
+        knex('staticMetadata').select('id').orderBy('id'),
+        filters
+      ),
+      conditions
+    );
+    return rows.map(row => row.id);
+  };
+
+  it('filters multiple circles with OR semantics', async function () {
+    expect(await getConditionIds({ circleIds: [1, 2] })).to.deep.equal([1, 2, 3, 4]);
+    expect(await getConditionIds({ circleIds: [1] })).to.deep.equal([1, 2]);
+  });
+
+  it('filters multiple tags with OR semantics without duplicate works', async function () {
+    expect(await getConditionIds({ tagIds: [1, 2] })).to.deep.equal([1, 2, 4]);
+  });
+
+  it('filters multiple VAs with OR semantics', async function () {
+    expect(await getConditionIds({ vaIds: ['v1', 'v2'] })).to.deep.equal([1, 2, 3, 4]);
+  });
+
+  it('combines different condition groups with AND semantics', async function () {
+    expect(await getConditionIds({
+      circleIds: [1],
+      tagIds: [2],
+      vaIds: ['v1']
+    })).to.deep.equal([1]);
+  });
+
+  it('combines a keyword with selected condition groups', async function () {
+    expect(await getConditionIds({
+      keyword: 'sleep',
+      circleIds: [2],
+      vaIds: ['v2']
+    })).to.deep.equal([4]);
+  });
+
+  it('searches title, circle, tag and VA names', async function () {
+    expect(await getConditionIds({ keyword: 'Alpha' })).to.deep.equal([1]);
+    expect(await getConditionIds({ keyword: 'circle two' })).to.deep.equal([3, 4]);
+    expect(await getConditionIds({ keyword: 'sleep' })).to.deep.equal([1, 4]);
+    expect(await getConditionIds({ keyword: 'alice' })).to.deep.equal([1, 3]);
+  });
+
+  it('keeps age and subtitle filters after grouped condition clauses', async function () {
+    expect(await getConditionIds(
+      { tagIds: [1, 2] },
+      { nsfw: false, subtitle: true }
+    )).to.deep.equal([2]);
+  });
+
+  it('matches an RJ number exactly', async function () {
+    expect(await getConditionIds({ keyword: 'RJ000003' })).to.deep.equal([3]);
   });
 });
 
