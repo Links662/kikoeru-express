@@ -767,7 +767,7 @@ const scanSubtitleForWork = async (work, counts) => {
 
   if (!rootFolder) {
     counts.failed += 1;
-    emitMainLog(`[${rjLabel}] 找不到根文件夹 "${work.root_folder}"，保留原字幕状态.`, 'error', 0);
+    emitMainLog(`[${rjLabel}] 找不到根文件夹 "${work.root_folder}"，保留原中文字幕状态.`, 'error', 0);
     addResult(work.id, 'failed', counts.failed);
     return;
   }
@@ -783,10 +783,10 @@ const scanSubtitleForWork = async (work, counts) => {
 
     await db.updateWorkSubtitle(work.id, subtitle);
     counts.updated += 1;
-    console.log(`[${rjLabel}] 字幕状态已更新为 ${subtitle ? '有字幕' : '无字幕'}.`);
+    console.log(`[${rjLabel}] 中文字幕状态已更新为 ${subtitle ? '中文字幕' : '无中文字幕'}.`);
   } catch (err) {
     counts.failed += 1;
-    emitMainLog(`[${rjLabel}] 扫描字幕失败: ${err.message}`, 'error', 0);
+    emitMainLog(`[${rjLabel}] 扫描中文字幕失败: ${err.message}`, 'error', 0);
     addResult(work.id, 'failed', counts.failed);
   }
 };
@@ -799,10 +799,10 @@ const performSubtitleScan = async () => {
     failed: 0
   };
 
-  emitMainLog(` * 共 ${works.length} 个作品，开始扫描字幕...`, 'info', 3);
+  emitMainLog(` * 共 ${works.length} 个作品，开始扫描中文字幕...`, 'info', 3);
   await Promise.all(works.map(work => limitP.call(scanSubtitleForWork, work, counts)));
 
-  const message = `字幕扫描完成: 更新 ${counts.updated} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`;
+  const message = `中文字幕扫描完成: 更新 ${counts.updated} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`;
   console.log(` * ${message}`);
   process.send({
     event: 'SCAN_FINISHED',
