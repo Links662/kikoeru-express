@@ -6,6 +6,17 @@ const { query, body } = require('express-validator');
 const { isValidRequest } = require('./utils/validate');
 const { emitToUser } = require('../state/userSockets');
 
+const normalizeHistoryRecord = (history) => {
+  if (!history) return history;
+
+  return {
+    ...history,
+    work_id: Number(history.work_id),
+    file_index: Number(history.file_index),
+    nsfw: Boolean(history.nsfw)
+  };
+};
+
 router.put('/',
   body('work_id').isInt(),
   body('file_index').isInt(),
@@ -30,10 +41,10 @@ router.put('/',
       );
 
       // 写入成功后只通知该账号，主界面的历史列表可以立即做增量更新。
-      const history = await db.getHistoryByWorkId(username, workId, fileIndex);
+      const history = normalizeHistoryRecord(
+        await db.getHistoryByWorkId(username, workId, fileIndex)
+      );
       if (history) {
-        history.work_id = Number(history.work_id);
-        history.file_index = Number(history.file_index);
         emitToUser(username, 'HISTORY_UPDATED', {
           history,
           limit: config.recentCount
@@ -57,16 +68,13 @@ router.get('/getByWorkIdIndex',
     const username = config.auth ? req.user.name : 'admin';
 
     try {
-      const history = await db.getHistoryByWorkId(
-        username,
-        req.query.work_id,
-        req.query.file_index
+      const history = normalizeHistoryRecord(
+        await db.getHistoryByWorkId(
+          username,
+          req.query.work_id,
+          req.query.file_index
+        )
       );
-
-      if (history) {
-        history.work_id = Number(history.work_id);
-        history.file_index = Number(history.file_index);
-      }
 
       res.send(history);
     } catch (err) {
@@ -82,12 +90,9 @@ router.get('/recent',
     const username = config.auth ? req.user.name : 'admin';
 
     try {
-      const history = await db.getHistoryGroupByWorkId(username, config.recentCount);
-
-      history.forEach((record) => {
-        record.work_id = parseInt(record.work_id);
-        record.file_index = parseInt(record.file_index);
-      });
+      const history = (
+        await db.getHistoryGroupByWorkId(username, config.recentCount)
+      ).map(normalizeHistoryRecord);
 
       res.send(history);
     } catch (err) {

@@ -765,30 +765,37 @@ const insertHistory = (username, work_id, file_index, file_name, play_time, tota
     `, [username, work_id, file_index, file_name, play_time, total_time]);
   });
 
-const getHistoryByWorkId = async (username, work_id, file_index) => {
-  return knex('t_history')
+const historySelectColumns = [
+  'h.user_name',
+  'h.work_id',
+  'h.file_index',
+  'h.file_name',
+  'h.play_time',
+  'h.total_time',
+  'h.updated_at',
+  'w.nsfw'
+];
+
+const getHistoryByWorkId = async (username, work_id, file_index, database = knex) => {
+  return database('t_history as h')
+    .join('t_work as w', 'w.id', 'h.work_id')
     .select([
-      'user_name',
-      'work_id',
-      'file_index',
-      'file_name',
-      'play_time',
-      'total_time',
-      'updated_at'
+      ...historySelectColumns
     ])
     .where({
-      user_name: username,
-      work_id,
-      file_index
+      'h.user_name': username,
+      'h.work_id': work_id,
+      'h.file_index': file_index
     })
     .first(); // 因为主键唯一，所以一定只有一条记录
 }
 
-const getHistoryGroupByWorkId = async (username, limit = 100) => {
-  return knex('t_history')
-    .select('*')
-    .where('user_name', username)
-    .orderBy('updated_at', 'desc')
+const getHistoryGroupByWorkId = async (username, limit = 100, database = knex) => {
+  return database('t_history as h')
+    .join('t_work as w', 'w.id', 'h.work_id')
+    .select([...historySelectColumns])
+    .where('h.user_name', username)
+    .orderBy('h.updated_at', 'desc')
     .limit(limit);
 }
 
