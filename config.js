@@ -42,6 +42,7 @@ const defaultConfig = {
   expiresIn: 2592000,
   scannerMaxRecursionDepth: 2,
   pageSize: 12,
+  listPageSize: 50,
   tagLanguage: 'zh-CN',
   retry: 5,
   dlsiteTimeout: 10000,
@@ -168,6 +169,10 @@ function getPageSize() {
   return config.pageSize || 12;
 }
 
+function getListPageSize() {
+  return config.listPageSize || 50;
+}
+
 module.exports = {
-  setConfig, config, sharedConfigHandle, getPageSize
+  setConfig, config, sharedConfigHandle, getPageSize, getListPageSize
 };

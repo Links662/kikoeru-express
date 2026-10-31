@@ -456,21 +456,101 @@ const getLabels = (field) => {
   }
 };
 
+const labelListSortFields = new Set(['favourite', 'name', 'count']);
+
+/**
+ * 分页获取社团、标签或声优列表。
+ * 搜索和排序都在数据库完成，只返回当前页需要的数据。
+ */
+const getLabelsPage = async ({
+  field,
+  username,
+  keyword = '',
+  sortBy = 'favourite',
+  sort = 'desc',
+  page = 1,
+  pageSize = 50,
+  database = knex
+} = {}) => {
+  const validFields = ['circle', 'tag', 'va'];
+  if (!validFields.includes(field)) throw new Error('无效的查询域');
+
+  const orderField = labelListSortFields.has(sortBy) ? sortBy : 'favourite';
+  const order = sort === 'asc' ? 'asc' : 'desc';
+  const normalizedKeyword = typeof keyword === 'string' ? keyword.trim() : '';
+
+  let query;
+  if (field === 'circle') {
+    query = database('t_work as w')
+      .join('t_circle as item', 'w.circle_id', 'item.id')
+      .select('item.id', 'item.name')
+      .count('w.circle_id as count')
+      .groupBy('item.id', 'item.name');
+  } else {
+    query = database(`r_${field}_work as relation`)
+      .join(`t_${field} as item`, `relation.${field}_id`, 'item.id')
+      .select('item.id', 'item.name')
+      .count(`relation.${field}_id as count`)
+      .groupBy('item.id', 'item.name');
+  }
+
+  query = query.select(
+    database.raw(
+      `CASE WHEN EXISTS (
+        SELECT 1
+        FROM t_favourite AS favourite
+        WHERE favourite.user_name = ?
+          AND favourite.field = ?
+          AND favourite.item_id = CAST(item.id AS TEXT)
+      ) THEN 1 ELSE 0 END AS favourite`,
+      [username, field]
+    )
+  );
+
+  if (normalizedKeyword) {
+    query.where('item.name', 'like', `%${normalizedKeyword}%`);
+  }
+
+  const countResult = await database
+    .from(query.clone().as('labels'))
+    .count({ count: '*' });
+  const totalCount = Number(countResult[0].count) || 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const currentPage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+  const offset = (currentPage - 1) * pageSize;
+
+  const items = await database
+    .from(query.as('labels'))
+    .select('*')
+    .orderBy(orderField, order)
+    .orderBy('name', 'asc')
+    .orderBy('id', 'asc')
+    .limit(pageSize)
+    .offset(offset);
+
+  return { items, totalCount, currentPage };
+};
+
 /**
  * 获取每个社团/标签/声优最近发售的若干作品 id（列表页展示 RJ 号用）
  * @param {String} field ['circle', 'tag', 'va'] 中的一个
  * @param {Number} limit 每个条目最多取多少条
+ * @param {Array<String|Number>} itemIds 可选，仅查询这些条目
  * @returns {Promise<Map<String, Number[]>>} 键为条目 id（字符串），值为作品 id 数组，按发售日倒序
  */
-const getRecentWorkIds = async (field = 'circle', limit = 10) => {
+const getRecentWorkIds = async (field = 'circle', limit = 10, itemIds) => {
   const validFields = ['circle', 'tag', 'va'];
   if (!validFields.includes(field)) throw new Error('无效的查询域');
+  if (Array.isArray(itemIds) && itemIds.length === 0) return new Map();
 
   // 社团直接挂在 t_work 上，标签/声优需要走关系表
   const itemColumn = field === 'circle' ? 'w.circle_id' : `r.${field}_id`;
   const workSource = field === 'circle'
     ? 't_work w'
     : `t_work w JOIN r_${field}_work r ON r.work_id = w.id`;
+  const itemFilter = Array.isArray(itemIds)
+    ? `AND item_id IN (${itemIds.map(() => '?').join(', ')})`
+    : '';
 
   const rows = await knex.raw(`
     WITH ranked AS (
@@ -480,9 +560,9 @@ const getRecentWorkIds = async (field = 'circle', limit = 10) => {
     )
     SELECT item_id, work_id
     FROM ranked
-    WHERE rn <= ?
+    WHERE rn <= ? ${itemFilter}
     ORDER BY item_id, rn
-  `, [limit]);
+  `, [limit, ...(Array.isArray(itemIds) ? itemIds : [])]);
 
   const result = new Map();
   for (const row of rows) {
@@ -809,7 +889,7 @@ module.exports = {
   getWorksByConditions, getWorkConditionLabels,
   applyWorkMetadataUpdate, updateWorkMetadata,
   updateWorkSubtitle,
-  getLabels, getMetadata, getFavourites, setFavourite,
+  getLabels, getLabelsPage, getMetadata, getFavourites, setFavourite,
   getRecentWorkIds,
   createUser, updateUserPassword, deleteUser,
   getUserState, setUserDisabled,

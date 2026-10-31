@@ -4,7 +4,7 @@ const router = express.Router();
 const { param, query, body} = require('express-validator');
 const db = require('../database/db');
 const { getTrackList, toTree, coverFilePath, isUsableCoverFile } = require('../filesystem/utils');
-const { config, getPageSize } = require('../config');
+const { config, getPageSize, getListPageSize } = require('../config');
 const normalize = require('./utils/normalize')
 const { isValidRequest } = require('./utils/validate');
 
@@ -69,6 +69,13 @@ const workListValidators = () => [
   conditionListValidator('circleIds', true),
   conditionListValidator('tagIds', true),
   conditionListValidator('vaIds', false),
+  query('keyword').optional({ nullable: true }).isString().trim().isLength({ max: 200 })
+];
+
+const labelListValidators = () => [
+  query('page').optional({ nullable: true }).isInt({ min: 1 }),
+  query('sort').optional({ nullable: true }).isIn(['desc', 'asc']),
+  query('sortBy').optional({ nullable: true }).isIn(['favourite', 'name', 'count']),
   query('keyword').optional({ nullable: true }).isString().trim().isLength({ max: 200 })
 ];
 
@@ -336,25 +343,47 @@ router.put('/:fields/:id/favourite',
 router.get('/:fields',
   mapFieldParam,
   param('fields').isIn(FIELD_PARAM_VALUES),
+  ...labelListValidators(),
   async (req, res, next) => {
     if(!isValidRequest(req, res)) return;
 
     const field = req.params.field;
     const username = config.auth ? req.user.name : 'admin';
+    const currentPage = parseInt(req.query.page) || 1;
+    const pageSize = getListPageSize();
+    const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : '';
+    const sortBy = req.query.sortBy || 'favourite';
+    const sort = req.query.sort || 'desc';
 
     try {
-      const [list, favourites, recentWorks] = await Promise.all([
-        db.getLabels(field).orderBy(`name`, 'asc'),
-        db.getFavourites(username, field),
-        db.getRecentWorkIds(field, 10)
-      ]);
-      const favouriteIds = new Set(favourites.map(item => String(item.item_id)));
-      list.forEach(item => {
-        item.favourite = favouriteIds.has(String(item.id)) ? 1 : 0;
+      const { items, totalCount, currentPage: actualPage } = await db.getLabelsPage({
+        field,
+        username,
+        keyword,
+        sortBy,
+        sort,
+        page: currentPage,
+        pageSize
+      });
+      const recentWorks = await db.getRecentWorkIds(
+        field,
+        10,
+        items.map(item => item.id)
+      );
+      items.forEach(item => {
+        item.favourite = Boolean(item.favourite);
+        item.count = Number(item.count) || 0;
         // 列表页展示最近发售的 RJ 号
         item.recentWorks = recentWorks.get(String(item.id)) || [];
       });
-      res.send(list);
+      res.send({
+        items,
+        pagination: {
+          currentPage: actualPage,
+          pageSize,
+          totalCount
+        }
+      });
     } catch (err) {
       next(err);
     }
