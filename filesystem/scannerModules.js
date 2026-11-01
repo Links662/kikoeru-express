@@ -569,14 +569,6 @@ const processFolder = async (folder, options = {}) => {
 const MAX = config.maxParallelism;
 const limitP = new LimitPromise(MAX);
 /**
- * 限制 processFolder 并发数量，
- * 使用控制器包装 processFolder 方法，实际上是将请求函数递交给控制器处理
- */
-const processFolderLimited = (folder, options) => {
-  return limitP.call(processFolder, folder, options);
-};
-
-/**
  * 清理本地不再存在的音声: 将其元数据从数据库中移除，并删除其封面图片
  */
 const performCleanup = async () => {
@@ -653,7 +645,8 @@ const processSingleFolder = async (folder, counts, options = {}) => {
   let result;
 
   try {
-    result = await processFolderLimited(folder, options);
+    // 将处理函数递交给并发控制器执行
+    result = await limitP.call(processFolder, folder, options);
   } catch (err) {
     // 单个作品出错不能让整场扫描挂掉，记成失败继续跑
     emitTaskLog(`[${rjLabel}] 处理出错: ${err.message}`, workId, 'error');
