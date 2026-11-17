@@ -589,23 +589,56 @@ const createUser = user => knex.transaction(trx => trx('t_user')
   }));
 
 /**
- * 更新用户密码
- * @param {Object} user User object.
- * @param {String} newPassword new password
+ * 修改用户密码和 / 或用户组。
+ *
+ * 把最后一个已启用管理员改成普通用户会让管理后台无人可进，
+ * 因此降级管理员时和禁用 / 删除接口使用同一套保护规则。
+ *
+ * @param {Object} changes 待修改字段
+ * @param {String} changes.name 用户名
+ * @param {String} [changes.password] 已哈希的新密码
+ * @param {String} [changes.group] 新用户组
  */
-const updateUserPassword = (user, newPassword) => knex.transaction(trx => trx('t_user')
-  .where('name', '=', user.name)
-  .first()
-  .then((res) => {
-    if (!res) {
-      throw httpError(403, '用户名错误.');
+const updateUser = async ({ name, password, group }, database = knex) => database.transaction(async (trx) => {
+  const user = await trx('t_user')
+    .select('name', 'group', 'disabled')
+    .where('name', '=', name)
+    .first();
+
+  if (!user) {
+    throw httpError(404, `用户 ${name} 不存在.`);
+  }
+
+  const nextGroup = group === undefined ? user.group : group;
+  const groupChanged = nextGroup !== user.group;
+  const passwordChanged = password !== undefined;
+
+  if (groupChanged && user.name === 'admin') {
+    throw httpError(403, '内置 admin 的用户组固定为管理员，不能修改.');
+  }
+
+  if (groupChanged && user.group === 'administrator' && user.disabled !== 1) {
+    const enabledAdministrators = await countEnabledAdministrators(trx);
+    if (enabledAdministrators <= 1) {
+      throw httpError(403, '至少要保留一个已启用的管理员账号，不能降级最后一个管理员.');
     }
-    return trx('t_user')
-      .where('name', '=', user.name)
-      .update({
-        password: newPassword
-      });
-  }));
+  }
+
+  if (groupChanged || passwordChanged) {
+    const changes = {};
+    if (groupChanged) changes.group = nextGroup;
+    if (passwordChanged) changes.password = password;
+
+    await trx('t_user').where('name', '=', user.name).update(changes);
+  }
+
+  return {
+    name: user.name,
+    group: nextGroup,
+    groupChanged,
+    passwordChanged
+  };
+});
 
 /**
  * 读取账号状态（不含密码哈希），用于鉴权中间件判断账号是否仍然可用
@@ -891,7 +924,7 @@ module.exports = {
   updateWorkSubtitle,
   getLabels, getLabelsPage, getMetadata, getFavourites, setFavourite,
   getRecentWorkIds,
-  createUser, updateUserPassword, deleteUser,
+  createUser, updateUser, deleteUser,
   getUserState, setUserDisabled,
   getWorksWithReviews, updateUserReview, deleteUserReview,
   insertHistory, getHistoryByWorkId, getHistoryGroupByWorkId,deleteHistoryByUserName,

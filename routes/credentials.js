@@ -65,31 +65,60 @@ router.put('/user', [
   check('name')
     .isLength({ min: 5 })
     .withMessage('用户名长度至少为 5'),
-  check('newPassword')
-    .isLength({ min: 5 })
-    .withMessage('密码长度至少为 5')
+  body('newPassword')
+    .custom(value => {
+      if (value === undefined || value === null || value === '') return true;
+      if (typeof value !== 'string' || value.length < 5) {
+        throw new Error('密码长度至少为 5');
+      }
+      return true;
+    }),
+  body('group')
+    .optional()
+    .isIn(USER_GROUPS)
+    .withMessage(`用户组名称必须为 ['user', 'administrator'] 的一个.`)
 ], async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(422).json({errors: errors.array()});
   }
 
-  const user = {
-    name: req.body.name
-  };
-  const isSelf = req.user !== undefined && req.user.name === user.name;
+  const name = req.body.name;
+  const wantsGroupChange = Object.prototype.hasOwnProperty.call(req.body, 'group');
+  const wantsPasswordChange = typeof req.body.newPassword === 'string' && req.body.newPassword.length > 0;
+  const isSelf = req.user !== undefined && req.user.name === name;
 
-  if (!config.auth || isAdministrator(req) || isSelf) {
-    try {
-      await db.updateUserPassword(user, await hashPassword(req.body.newPassword));
-      // self 告诉前端改的是不是调用者自己的账号：只有改自己的密码才值得退回登录页，
-      // 管理员改别人的密码不该把自己踢下线
-      res.send({ message: '密码修改成功.', self: isSelf });
-    } catch (err) {
-      sendDbError(res, next, err);
-    }
-  } else {
+  if (!wantsGroupChange && !wantsPasswordChange) {
+    return res.status(422).send({ error: '没有需要修改的用户信息.' });
+  }
+
+  // 用户组涉及权限，只允许管理员修改；普通用户可以修改自己的密码。
+  if (!isAdministrator(req) && (!isSelf || wantsGroupChange)) {
     return res.status(403).send({ error: '只能修改自己账号的密码.' });
+  }
+
+  try {
+    const result = await db.updateUser({
+      name,
+      password: wantsPasswordChange ? await hashPassword(req.body.newPassword) : undefined,
+      group: wantsGroupChange ? req.body.group : undefined
+    });
+
+    // 用户组变化后关闭现有 Socket，避免旧连接继续使用修改前的权限。
+    if (result.groupChanged) {
+      closeUserSockets(name);
+    }
+
+    // self 告诉前端修改的是调用者自己的账号；涉及密码或权限变化时需要重新登录。
+    res.send({
+      message: '用户信息修改成功.',
+      self: isSelf,
+      group: result.group,
+      groupChanged: result.groupChanged,
+      passwordChanged: result.passwordChanged
+    });
+  } catch (err) {
+    sendDbError(res, next, err);
   }
 });
 
