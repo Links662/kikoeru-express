@@ -572,32 +572,38 @@ const limitP = new LimitPromise(MAX);
  * 清理本地不再存在的音声: 将其元数据从数据库中移除，并删除其封面图片
  */
 const performCleanup = async () => {
-  const trxProvider = db.knex.transactionProvider();
-  const trx = await trxProvider();
-  const works = await trx('t_work').select('id', 'root_folder', 'dir');
-  const promises = works.map(work => new Promise((resolve, reject) => {
-    // 检查每个音声的根文件夹或本地路径是否仍然存在
-    const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder);
-    if (!rootFolder || !fs.existsSync(path.join(rootFolder.path, work.dir))) {
-      db.removeWork(work.id, trxProvider)
-        .then((result) => {
-          const rjLabel = formatRJLabel(work.id);
-          deleteCoverImageFromDisk(work.id)    
-            .catch((err) => {
-              if (err && err.code !== 'ENOENT') { 
-                emitMainLog(`[${rjLabel}] 在删除封面过程中出错: ${err.message}`, 'error', 0);
-              }
-            })
-            .then(() => resolve(result));
-        })
-        .catch(err => reject(err));
-    } else {
-      resolve();
-    }
-  }));
+  const removedWorkIds = [];
 
-  await Promise.all(promises);
-  trx.commit();
+  await db.knex.transaction(async trx => {
+    const works = await trx('t_work').select('id', 'root_folder', 'dir');
+
+    for (const work of works) {
+      // 检查每个音声的根文件夹或本地路径是否仍然存在
+      const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder);
+      const workPath = rootFolder ? path.join(rootFolder.path, work.dir) : null;
+
+      if (!workPath || !fs.existsSync(workPath)) {
+        await db.removeWork(work.id, trx);
+        removedWorkIds.push(work.id);
+      }
+    }
+  });
+
+  // 数据库提交成功后再删除文件，避免事务回滚时封面已经丢失。
+  // 串行删除，避免大量失效作品同时产生文件系统 I/O 峰值。
+  for (const workId of removedWorkIds) {
+    const rjLabel = formatRJLabel(workId);
+
+    try {
+      await deleteCoverImageFromDisk(workId);
+    } catch (err) {
+      if (err && err.code !== 'ENOENT') {
+        emitMainLog(`[${rjLabel}] 在删除封面过程中出错: ${err.message}`, 'error', 0);
+      }
+    }
+  }
+
+  return removedWorkIds.length;
 };
 
 const prepareEnvironment = async () => {
@@ -611,8 +617,9 @@ const prepareEnvironment = async () => {
 
 const runCleanupStep = async () => {
   emitMainLog('清理本地不再存在的音声的数据与封面图片...', 'info', 0);
-  await performCleanup();
-  emitMainLog('清理完成. 现在开始扫描...', 'info', 0);
+  const removedCount = await performCleanup();
+  emitMainLog(`清理完成，共清理 ${removedCount} 个失效作品. 现在开始扫描...`, 'info', 0);
+  return removedCount;
 };
 
 const collectAllFolders = async () => {
@@ -675,15 +682,15 @@ const processSingleFolder = async (folder, counts, options = {}) => {
   addResult(workId, result, counts[result]);
 };
 
-const finalizeScan = (counts, options = {}) => {
+const finalizeScan = async (counts, options = {}) => {
   const message = options.dryRun
-    ? `检查完成（未做任何修改）: 需要处理 ${counts.pending} 个作品.`
+    ? `检查完成（封面未做修改）: 需要处理 ${counts.pending} 个作品.`
     : `扫描完成: 新增 ${counts.added} 个，修复封面 ${counts.repaired} 个，升级封面 ${counts.upgraded} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`;
 
   console.log(` * ${message}`);
   process.send({ event: 'SCAN_FINISHED', payload: { message } });
 
-  db.knex.destroy();
+  await db.knex.destroy();
   process.exit(0);
 };
 /**
@@ -719,10 +726,11 @@ const performScan = async (options = {}) => {
     );
 
     // 5. 收尾阶段
-    finalizeScan(counts, options);
+    await finalizeScan(counts, options);
 
   } catch (err) {
     emitMainLog(` ! 扫描过程中出错: ${err.message}`, 'error', 3);
+    await db.knex.destroy().catch(() => {});
     process.exit(1);
   }
 };

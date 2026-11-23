@@ -410,12 +410,11 @@ const saveCoverImageToDisk = (stream, id, type) => new Promise((resolve, reject)
  */
 const removeTemporaryCoverFiles = async () => {
   const entries = await fs.promises.readdir(config.coverFolderDir).catch(() => []);
+  const temporaryFiles = entries.filter(name => name.endsWith('.jpg.part'));
 
-  await Promise.all(
-    entries
-      .filter(name => name.endsWith('.jpg.part'))
-      .map(name => fs.promises.unlink(path.join(config.coverFolderDir, name)).catch(() => {})),
-  );
+  for (const name of temporaryFiles) {
+    await fs.promises.unlink(path.join(config.coverFolderDir, name)).catch(() => {});
+  }
 };
 
 

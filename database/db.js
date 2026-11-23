@@ -62,42 +62,40 @@ const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
 
       insert_time: knex.fn.now()
     }))
-  .then(() => {
-    const promises = [];
-
-    for (let i = 0; i < work.tags.length; i += 1) {
-      promises.push(trx.raw(
+  .then(async () => {
+    for (const tag of work.tags) {
+      await trx.raw(
         trx('t_tag')
           .insert({
-            id: work.tags[i].id,
-            name: work.tags[i].name,
+            id: tag.id,
+            name: tag.name,
           }).toString().replace('insert', 'insert or ignore'),
-      )
-        .then(() => trx('r_tag_work')
-          .insert({
-            tag_id: work.tags[i].id,
-            work_id: work.id,
-          })));
+      );
+      await trx('r_tag_work')
+        .insert({
+          tag_id: tag.id,
+          work_id: work.id,
+        });
     }
 
-    for (let i = 0; i < work.vas.length; i += 1) {
-      promises.push(trx.raw(
+    for (const va of work.vas) {
+      await trx.raw(
         trx('t_va')
           .insert({
-            id: work.vas[i].id,
-            name: work.vas[i].name,
+            id: va.id,
+            name: va.name,
           }).toString().replace('insert', 'insert or ignore'),
-      )
-        .then(() => trx.raw(
-          trx('r_va_work')
-            .insert({
-              va_id: work.vas[i].id,
-              work_id: work.id,
-            }).toString().replace('insert', 'insert or ignore'))));
+      );
+      await trx.raw(
+        trx('r_va_work')
+          .insert({
+            va_id: va.id,
+            work_id: work.id,
+          }).toString().replace('insert', 'insert or ignore'),
+      );
     }
 
-    return Promise.all(promises)
-      .then(() => trx);
+    return trx;
   }));
 
 /**
@@ -224,8 +222,7 @@ const getWorkMetadata = async (id, username) => {
  * @param {*} tags Array of tag ids to check.
  * @param {*} vas Array of VA ids to check.
  */
-const cleanupOrphans = async (trxProvider, circle, tags, vas)  => {
-  const trx = await trxProvider();
+const cleanupOrphans = async (trx, circle, tags, vas)  => {
   const getCount = (tableName, colName, colValue) => new Promise((resolveCount, rejectCount) => {
     trx(tableName)
       .select(colName)
@@ -237,32 +234,21 @@ const cleanupOrphans = async (trxProvider, circle, tags, vas)  => {
       .catch(err => rejectCount(err));
   });
 
-  const promises = [];
-  promises.push(new Promise((resolveCircle, rejectCircle) => {
-    getCount('t_work', 'circle_id', circle)
-      .then((count) => {
-        if (count === 0) {
-          trx('t_circle')
-            .del()
-            .where('id', '=', circle)
-            .then(() => resolveCircle())
-            .catch(err => rejectCircle(err));
-        } else {
-          resolveCircle();
-        }
-      });
-  }));
+  const circleCount = await getCount('t_work', 'circle_id', circle);
+  if (circleCount === 0) {
+    await trx('t_circle')
+      .del()
+      .where('id', '=', circle);
+  }
 
   for (let i = 0; i < tags.length; i += 1) {
     const tag = tags[i];
     const count = await getCount('r_tag_work', 'tag_id', tag);
 
     if (count === 0) {
-      promises.push(
-        trx('t_tag')
-          .delete()
-          .where('id', '=', tag),
-      );
+      await trx('t_tag')
+        .delete()
+        .where('id', '=', tag);
     }
   }
 
@@ -271,24 +257,21 @@ const cleanupOrphans = async (trxProvider, circle, tags, vas)  => {
     const count = await getCount('r_va_work', 'va_id', va);
 
     if (count === 0) {
-      promises.push(
-        trx('t_va')
-          .delete()
-          .where('id', '=', va),
-      );
+      await trx('t_va')
+        .delete()
+        .where('id', '=', va);
     }
   }
-
-  await Promise.all(promises);
 };
 
 /**
  * Removes a work and then its orphaned circles, tags & VAs from the database.
  * @param {Integer} id Work id.
  */
-const removeWork = async (id, trxProvider) => {
-  const trx = await trxProvider();
+const removeWork = async (id, trx) => {
     const circle = await trx('t_work').select('circle_id').where('id', '=', id).first();
+    if (!circle) return;
+
     const tags = await trx('r_tag_work').select('tag_id').where('work_id', '=', id);
     const vas = await trx('r_va_work').select('va_id').where('work_id', '=', id);
 
@@ -298,11 +281,11 @@ const removeWork = async (id, trxProvider) => {
     await trx('t_history').del().where('work_id', '=', id);
     await trx('t_work').del().where('id', '=', id);
     await cleanupOrphans(
-      trxProvider,
+      trx,
       circle.circle_id,
       tags.map(tag => tag.tag_id),
       vas.map(va => va.va_id),
-    )
+    );
 };
 
 /**
