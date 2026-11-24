@@ -22,7 +22,7 @@ describe('work metadata updates', function () {
       })
       .createTable('t_work', table => {
         table.increments('id').primary();
-        table.string('root_folder').notNullable();
+        table.integer('root_folder_id').notNullable();
         table.string('dir').notNullable();
         table.string('title').notNullable();
         table.integer('circle_id').notNullable();
@@ -61,7 +61,7 @@ describe('work metadata updates', function () {
     ]);
     await knex('t_work').insert({
       id: 100,
-      root_folder: 'root',
+      root_folder_id: 1,
       dir: 'RJ000000',
       title: 'Old title',
       circle_id: 1,

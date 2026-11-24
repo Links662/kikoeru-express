@@ -22,6 +22,7 @@ const decodeSetting = row => {
 };
 
 const normalizeStoredRootFolders = rows => normalizeRootFolders(rows.map(row => ({
+  id: row.id,
   name: String(row.name || '').trim(),
   path: String(row.path || '').trim(),
   maxRecursionDepth: row.max_recursion_depth
@@ -33,26 +34,11 @@ const normalizeInputRootFolders = rootFolders => normalizeRootFolders(rootFolder
   path: String(rootFolder.path || '').trim()
 }));
 
-const assertSettingsTables = async (knex) => {
-  const [hasSettings, hasRootFolders] = await Promise.all([
-    knex.schema.hasTable(SETTING_TABLE),
-    knex.schema.hasTable(ROOT_FOLDER_TABLE)
-  ]);
-
-  if (!hasSettings || !hasRootFolders) {
-    throw new Error(
-      `数据库缺少运行时配置表，请先创建 ${SETTING_TABLE} 和 ${ROOT_FOLDER_TABLE}.`
-    );
-  }
-};
-
 const loadRuntimeSettings = async (knex = getDatabaseKnex()) => {
-  await assertSettingsTables(knex);
-
   const [settingRows, rootFolderRows] = await Promise.all([
     knex(SETTING_TABLE).select('key', 'value'),
     knex(ROOT_FOLDER_TABLE)
-      .select('name', 'path', 'max_recursion_depth', 'position')
+      .select('id', 'name', 'path', 'max_recursion_depth', 'position')
       .orderBy([
         { column: 'position', order: 'asc' },
         { column: 'id', order: 'asc' }
@@ -75,8 +61,6 @@ const loadRuntimeSettings = async (knex = getDatabaseKnex()) => {
 };
 
 const saveRuntimeSettings = async (newSettings, knex = getDatabaseKnex()) => {
-  await assertSettingsTables(knex);
-
   const update = {};
   for (const key of settingKeys) {
     if (Object.prototype.hasOwnProperty.call(newSettings, key)) {
@@ -88,6 +72,8 @@ const saveRuntimeSettings = async (newSettings, knex = getDatabaseKnex()) => {
   const rootFolders = hasRootFolders
     ? normalizeInputRootFolders(newSettings[ROOT_FOLDER_KEY])
     : null;
+
+  let savedRootFolders = null;
 
   await knex.transaction(async trx => {
     for (const [key, value] of Object.entries(update)) {
@@ -102,21 +88,58 @@ const saveRuntimeSettings = async (newSettings, knex = getDatabaseKnex()) => {
     }
 
     if (hasRootFolders) {
-      await trx(ROOT_FOLDER_TABLE).del();
-      if (rootFolders.length > 0) {
-        await trx(ROOT_FOLDER_TABLE).insert(rootFolders.map((rootFolder, position) => ({
-          name: rootFolder.name,
-          path: rootFolder.path,
-          max_recursion_depth: rootFolder.maxRecursionDepth,
-          position
-        })));
+      const currentRootFolders = await trx(ROOT_FOLDER_TABLE).select('*');
+      const usedIds = new Set();
+
+      for (const [position, rootFolder] of rootFolders.entries()) {
+        const existingRootFolder = rootFolder.id
+          ? currentRootFolders.find(row => Number(row.id) === Number(rootFolder.id))
+          : null;
+
+        if (existingRootFolder) {
+          const id = Number(existingRootFolder.id);
+          usedIds.add(id);
+
+          await trx(ROOT_FOLDER_TABLE)
+            .where('id', '=', id)
+            .update({
+              name: rootFolder.name,
+              path: rootFolder.path,
+              max_recursion_depth: rootFolder.maxRecursionDepth,
+              position
+            });
+        } else {
+          const insertedIds = await trx(ROOT_FOLDER_TABLE).insert({
+            name: rootFolder.name,
+            path: rootFolder.path,
+            max_recursion_depth: rootFolder.maxRecursionDepth,
+            position
+          });
+          usedIds.add(Number(insertedIds[0]));
+        }
       }
+
+      const removedIds = currentRootFolders
+        .map(row => Number(row.id))
+        .filter(id => !usedIds.has(id));
+      if (removedIds.length > 0) {
+        await trx(ROOT_FOLDER_TABLE).whereIn('id', removedIds).del();
+      }
+
+      savedRootFolders = normalizeStoredRootFolders(
+        await trx(ROOT_FOLDER_TABLE)
+          .select('id', 'name', 'path', 'max_recursion_depth', 'position')
+          .orderBy([
+            { column: 'position', order: 'asc' },
+            { column: 'id', order: 'asc' }
+          ])
+      );
     }
   });
 
   const appliedSettings = { ...update };
   if (hasRootFolders) {
-    appliedSettings[ROOT_FOLDER_KEY] = rootFolders;
+    appliedSettings[ROOT_FOLDER_KEY] = savedRootFolders;
   }
   setRuntimeConfig(appliedSettings);
   return config;

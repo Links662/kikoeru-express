@@ -44,7 +44,7 @@ const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
   .then(() => trx('t_work')
     .insert({
       id: work.id,
-      root_folder: work.rootFolderName,
+      root_folder_id: work.rootFolderId,
       dir: work.dir,
       title: work.title,
       circle_id: work.circle.id,

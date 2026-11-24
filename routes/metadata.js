@@ -4,7 +4,7 @@ const router = express.Router();
 const { param, query, body} = require('express-validator');
 const db = require('../database/db');
 const { getTrackList, toTree, coverFilePath, isUsableCoverFile } = require('../filesystem/utils');
-const { config, getPageSize, getListPageSize } = require('../config');
+const { config, getPageSize, getListPageSize, findRootFolder } = require('../config');
 const normalize = require('./utils/normalize')
 const { isValidRequest } = require('./utils/validate');
 
@@ -199,17 +199,17 @@ router.get('/tracks/:id',
     if(!isValidRequest(req, res)) return;
 
     db.knex('t_work')
-      .select('title', 'root_folder', 'dir')
+      .select('title', 'root_folder_id', 'dir')
       .where('id', '=', req.params.id)
       .first()
       .then((work) => {
-        const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder);
+        const rootFolder = findRootFolder(work);
         if (rootFolder) {
           getTrackList(req.params.id, path.join(rootFolder.path, work.dir))
             .then(tracks => res.send(toTree(tracks, work.dir, rootFolder)))
             .catch(() => res.status(500).send({error: '获取文件列表失败，请检查文件是否存在或重新扫描清理'}));
         } else {
-          res.status(500).send({error: `找不到文件夹: "${work.root_folder}"，请尝试重启服务器或重新扫描.`});
+          res.status(500).send({error: `找不到根目录 #${work.root_folder_id}，请检查存储管理设置.`});
         }
       })
       .catch(err => next(err));

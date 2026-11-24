@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { config } = require('../config');
+const { config, findRootFolder } = require('../config');
 const db = require('../database/db');
 const { param } = require('express-validator');
 const fs = require('fs');
@@ -17,11 +17,11 @@ router.get('/stream/:id/:index',
     if(!isValidRequest(req, res)) return;
 
     db.knex('t_work')
-      .select('root_folder', 'dir')
+      .select('root_folder_id', 'dir')
       .where('id', '=', req.params.id)
       .first()
       .then((work) => {
-        const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder);
+        const rootFolder = findRootFolder(work);
         if (rootFolder) {
           getTrackList(req.params.id, path.join(rootFolder.path, work.dir))
             .then((tracks) => {
@@ -61,7 +61,7 @@ router.get('/stream/:id/:index',
             })
             .catch(err => next(err));
         } else {
-          res.status(500).send({error: `找不到文件夹: "${work.root_folder}"，请尝试重启服务器或重新扫描.`});
+          res.status(500).send({error: `找不到根目录 #${work.root_folder_id}，请检查存储管理设置.`});
         }
       })
       .catch(err => next(err));
@@ -74,11 +74,11 @@ router.get('/download/:id/:index',
     if(!isValidRequest(req, res)) return;
 
     db.knex('t_work')
-      .select('root_folder', 'dir')
+      .select('root_folder_id', 'dir')
       .where('id', '=', req.params.id)
       .first()
       .then((work) => {
-        const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder);
+        const rootFolder = findRootFolder(work);
         if (rootFolder) {
           getTrackList(req.params.id, path.join(rootFolder.path, work.dir))
             .then((tracks) => {
@@ -104,7 +104,7 @@ router.get('/download/:id/:index',
             })
             .catch(err => next(err));
         } else {
-          res.status(500).send({error: `找不到文件夹: "${work.root_folder}"，请尝试重启服务器或重新扫描.`});
+          res.status(500).send({error: `找不到根目录 #${work.root_folder_id}，请检查存储管理设置.`});
         }
       });
 });
@@ -116,11 +116,11 @@ router.get('/check-lrc/:id/:index',
     if(!isValidRequest(req, res)) return;
 
     db.knex('t_work')
-      .select('root_folder', 'dir')
+      .select('root_folder_id', 'dir')
       .where('id', '=', req.params.id)
       .first()
       .then((work) => {
-        const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder);
+        const rootFolder = findRootFolder(work);
         if (rootFolder) {
           getTrackList(req.params.id, path.join(rootFolder.path, work.dir))
             .then((tracks) => {
@@ -145,7 +145,7 @@ router.get('/check-lrc/:id/:index',
             })
             .catch(err => next(err));
         } else {
-          res.status(500).send({error: `找不到文件夹: "${work.root_folder}"，请尝试重启服务器或重新扫描.`});
+          res.status(500).send({error: `找不到根目录 #${work.root_folder_id}，请检查存储管理设置.`});
         }
       })
       .catch(err => next(err));

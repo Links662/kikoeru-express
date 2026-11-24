@@ -15,9 +15,16 @@ const createCoreTables = async () => {
       table.increments();
       table.string('name').notNullable();
     })
+    .createTable('t_root_folder', (table) => {
+      table.increments('id');
+      table.string('name').notNullable().unique();
+      table.text('path').notNullable().unique();
+      table.integer('max_recursion_depth').notNullable().defaultTo(2);
+      table.integer('position').notNullable().defaultTo(0);
+    })
     .createTable('t_work', (table) => {
       table.increments();
-      table.string('root_folder').notNullable();
+      table.integer('root_folder_id').notNullable().references('id').inTable('t_root_folder').onUpdate('CASCADE').onDelete('RESTRICT');
       table.string('dir').notNullable();
       table.string('title').notNullable();
       table.integer('circle_id').notNullable();
@@ -34,6 +41,7 @@ const createCoreTables = async () => {
       table.timestamp('insert_time').defaultTo(knex.fn.now()); // 补全视图中引用的字段
       table.foreign('circle_id').references('id').inTable('t_circle').onUpdate('CASCADE').onDelete('CASCADE');
       table.index(['circle_id', 'release'], 't_work_index');
+      table.index('root_folder_id', 'idx_t_work_root_folder_id');
     })
     .createTable('t_tag', (table) => {
       table.increments();
@@ -80,13 +88,6 @@ const createCoreTables = async () => {
       table.string('key').primary();
       table.text('value').notNullable();
       table.timestamp('updated_at').notNullable().defaultTo(knex.fn.now());
-    })
-    .createTable('t_root_folder', (table) => {
-      table.increments('id');
-      table.string('name').notNullable().unique();
-      table.text('path').notNullable().unique();
-      table.integer('max_recursion_depth').notNullable().defaultTo(2);
-      table.integer('position').notNullable().defaultTo(0);
     });
 
   const settingRows = Object.entries(runtimeDefaults)

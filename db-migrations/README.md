@@ -21,8 +21,8 @@
 1. 停止 Kikoeru 服务并备份 `sqlite/db.sqlite3` 与 `config/config.json`。
 2. 对数据库执行 `20261125_split_runtime_config_to_sqlite.sql`。
 3. 使用仓库根目录的 `config.example.json` 替换 `config/config.json`，保留原 JWT 密钥并修改为实际部署路径。
-4. 启动服务后，在“存储管理”中重新添加原根目录。
-5. 检查运行时设置后再保存一次，确认 `t_app_setting` 内容符合预期。
+4. 在 `t_root_folder` 中准备根目录记录，然后执行 `20261125_add_work_root_folder_id.sql`。
+5. 启动服务并检查运行时设置，确认 `t_app_setting` 内容符合预期。
 
 `t_root_folder` 不包含自动导入逻辑，因为迁移脚本无法读取旧 JSON 配置中的路径。
 
@@ -31,6 +31,32 @@
 - 执行 `PRAGMA foreign_key_check;`，结果应为空。
 - 确认 `t_app_setting` 和 `t_root_folder` 存在。
 - 启动服务时如果提示缺少运行时配置表，说明 SQL 脚本尚未执行。
+
+## 20261125 - 作品根目录稳定 ID
+
+迁移文件：`20261125_add_work_root_folder_id.sql`
+
+执行前提：先执行 `20261125_split_runtime_config_to_sqlite.sql`。
+
+### 结构变更
+
+- `t_work.root_folder_id` 成为唯一根目录关联字段，外键指向 `t_root_folder(id)`。
+- `t_work.root_folder` 名称字段会被删除。
+- 外键规则为 `ON UPDATE CASCADE ON DELETE RESTRICT`。
+- 新增 `idx_t_work_root_folder_id` 索引。
+- 迁移时按旧 `root_folder` 名称匹配 `t_root_folder`，无法匹配时整次迁移失败。
+
+### 行为变化
+
+- 新建作品只保存稳定的 `root_folder_id`。
+- 根目录别名或路径变化时，媒体、封面和扫描逻辑只使用 `root_folder_id` 定位，不存在名称回退。
+- 仍被作品引用的根目录不能删除。
+
+### 验证
+
+- 执行 `PRAGMA foreign_key_check;`，结果应为空。
+- 检查 `t_work` 是否存在 `root_folder_id` 和 `idx_t_work_root_folder_id`。
+- 执行根目录 ID 迁移前必须准备好 `t_root_folder`，否则迁移因 `root_folder_id` 非空约束失败。
 
 ## 20261018 - 年龄分级不允许为空
 

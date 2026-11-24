@@ -21,7 +21,7 @@ const {
   hasLrc
 } = require('./utils');
 const { formatRJLabel } = require('../utils/workId');
-const { config } = require('../config');
+const { config, findRootFolder } = require('../config');
 
 // 只有在子进程中 process 对象才有 send() 方法
 process.send = process.send || function () {};
@@ -168,17 +168,17 @@ const uniqueArr = (arr) => {
  * 从 DLsite 抓取该音声的元数据，并保存到数据库，
  * 返回一个 Promise 对象，处理结果: 'added' or 'failed'
  * @param {number} id work id
- * @param {string} rootFolderName 根文件夹别名
+ * @param {number} rootFolderId 根目录稳定 ID
  * @param {string} dir 音声文件夹相对路径
  * @param {string} tagLanguage 标签语言，'ja-JP', 'zh-TW' or 'zh-CN'，默认'zh-CN'
  */
-const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
+const getMetadata = (id, rootFolderId, dir, tagLanguage) => {
   const rjLabel = formatRJLabel(id);
   emitTaskLog(`[${rjLabel}] 从 DLSite 抓取元数据...`, id);
   
   return scrapeWorkMetadataFromDLsite(id, tagLanguage)
     .then((metadata) => {
-      const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === rootFolderName);
+      const rootFolder = findRootFolder({ root_folder_id: rootFolderId });
       const absolutePath = path.join(rootFolder.path, dir);
       console.log(absolutePath)
       return getTrackList(id, absolutePath)
@@ -190,7 +190,7 @@ const getMetadata = (id, rootFolderName, dir, tagLanguage) => {
     .then((metadata) => {
       emitTaskLog(`[${rjLabel}] 元数据抓取成功，准备添加到数据库...`, id);
       
-      metadata.rootFolderName = rootFolderName;
+      metadata.rootFolderId = rootFolderId;
       metadata.dir = dir;
 
       return db.insertWorkMetadata(metadata)
@@ -535,7 +535,7 @@ const maintainCovers = async (id, options = {}) => {
 /**
  * 获取音声元数据，获取音声封面图片，
  * 返回一个 Promise 对象，处理结果: 'added', 'repaired', 'upgraded', 'skipped' or 'failed'
- * @param {string} folder 音声文件夹对象 { relativePath: '相对路径', rootFolderName: '根文件夹别名', id: '音声ID' }
+ * @param {string} folder 音声文件夹对象 { relativePath: '相对路径', rootFolderId: '根目录ID', id: '音声ID' }
  * @param {Object} options { coversOnly, dryRun, refreshAllCovers }
  */
 const processFolder = async (folder, options = {}) => {
@@ -559,7 +559,12 @@ const processFolder = async (folder, options = {}) => {
       message: `发现新文件夹: "${folder.absolutePath}"`
     });
 
-    const result = await getMetadata(folder.id, folder.rootFolderName, folder.relativePath, config.tagLanguage);
+    const result = await getMetadata(
+      folder.id,
+      folder.rootFolderId,
+      folder.relativePath,
+      config.tagLanguage
+    );
 
     if (result === 'failed') return 'failed';
     return await fetchCover(folder.id);
@@ -576,11 +581,11 @@ const performCleanup = async () => {
   const removedWorkIds = [];
 
   await db.knex.transaction(async trx => {
-    const works = await trx('t_work').select('id', 'root_folder', 'dir');
+    const works = await trx('t_work').select('id', 'root_folder_id', 'dir');
 
     for (const work of works) {
       // 检查每个音声的根文件夹或本地路径是否仍然存在
-      const rootFolder = config.rootFolders.find(rootFolder => rootFolder.name === work.root_folder);
+      const rootFolder = findRootFolder(work);
       const workPath = rootFolder ? path.join(rootFolder.path, work.dir) : null;
 
       if (!workPath || !fs.existsSync(workPath)) {
@@ -766,11 +771,11 @@ const updateMetadata = (id, options = {}) => {
 
 const scanSubtitleForWork = async (work, counts) => {
   const rjLabel = formatRJLabel(work.id);
-  const rootFolder = config.rootFolders.find(folder => folder.name === work.root_folder);
+  const rootFolder = findRootFolder(work);
 
   if (!rootFolder) {
     counts.failed += 1;
-    emitMainLog(`[${rjLabel}] 找不到根文件夹 "${work.root_folder}"，保留原中文字幕状态.`, 'error', 0);
+      emitMainLog(`[${rjLabel}] 找不到根目录 #${work.root_folder_id}，保留原中文字幕状态.`, 'error', 0);
     addResult(work.id, 'failed', counts.failed);
     return;
   }
@@ -796,7 +801,7 @@ const scanSubtitleForWork = async (work, counts) => {
 
 const performSubtitleScan = async () => {
   const limiter = createParallelLimiter();
-  const works = await db.knex('t_work').select('id', 'root_folder', 'dir', 'subtitle');
+  const works = await db.knex('t_work').select('id', 'root_folder_id', 'dir', 'subtitle');
   const counts = {
     updated: 0,
     skipped: 0,

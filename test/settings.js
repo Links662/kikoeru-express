@@ -30,6 +30,11 @@ describe('SQLite runtime settings', function () {
       table.integer('max_recursion_depth').notNullable().defaultTo(2);
       table.integer('position').notNullable().defaultTo(0);
     });
+    await knex.schema.createTable('t_work', table => {
+      table.increments('id');
+      table.integer('root_folder_id').notNullable();
+      table.string('dir').notNullable();
+    });
   });
 
   afterEach(async function () {
@@ -42,10 +47,12 @@ describe('SQLite runtime settings', function () {
       { key: 'pageSize', value: '36' },
       { key: 'rewindSeekTime', value: '10' }
     ]);
-    await knex('t_root_folder').insert([
-      { name: 'second', path: '/second', max_recursion_depth: 3, position: 1 },
-      { name: 'first', path: '/first', max_recursion_depth: 1, position: 0 }
-    ]);
+    const [firstId] = await knex('t_root_folder').insert({
+      name: 'first', path: '/first', max_recursion_depth: 1, position: 0
+    });
+    const [secondId] = await knex('t_root_folder').insert({
+      name: 'second', path: '/second', max_recursion_depth: 3, position: 1
+    });
 
     await loadRuntimeSettings(knex);
 
@@ -53,33 +60,54 @@ describe('SQLite runtime settings', function () {
     expect(config.rewindSeekTime).to.equal(10);
     expect(config.forwardSeekTime).to.equal(30);
     expect(config.rootFolders).to.deep.equal([
-      { name: 'first', path: '/first', maxRecursionDepth: 1 },
-      { name: 'second', path: '/second', maxRecursionDepth: 3 }
+      { id: firstId, name: 'first', path: '/first', maxRecursionDepth: 1 },
+      { id: secondId, name: 'second', path: '/second', maxRecursionDepth: 3 }
     ]);
   });
 
   it('persists runtime settings and root folders in one transaction', async function () {
+    const [rootId] = await knex('t_root_folder').insert({
+      name: 'media',
+      path: '/media',
+      max_recursion_depth: 2,
+      position: 0
+    });
+    await knex('t_work').insert({
+      dir: 'RJ123456',
+      root_folder_id: rootId
+    });
+
     await saveRuntimeSettings({
       pageSize: 48,
       skipCleanup: true,
       rootFolders: [
-        { name: 'media', path: '/media', maxRecursionDepth: 2 }
+        { id: rootId, name: 'renamed', path: '/moved', maxRecursionDepth: 3 }
       ]
     }, knex);
 
     const settings = await knex('t_app_setting').orderBy('key');
     const settingsByKey = Object.fromEntries(settings.map(item => [item.key, item.value]));
     const roots = await knex('t_root_folder').select();
+    const works = await knex('t_work').select();
 
     expect(config.pageSize).to.equal(48);
     expect(config.skipCleanup).to.equal(true);
     expect(config.rootFolders).to.deep.equal([
-      { name: 'media', path: '/media', maxRecursionDepth: 2 }
+      { id: rootId, name: 'renamed', path: '/moved', maxRecursionDepth: 3 }
     ]);
     expect(settingsByKey.pageSize).to.equal('48');
     expect(settingsByKey.skipCleanup).to.equal('true');
     expect(roots).to.have.length(1);
-    expect(roots[0].name).to.equal('media');
+    expect(roots[0]).to.include({
+      id: rootId,
+      name: 'renamed',
+      path: '/moved',
+      max_recursion_depth: 3
+    });
+    expect(works[0]).to.include({
+      root_folder_id: rootId,
+      dir: 'RJ123456'
+    });
   });
 
   it('refuses to load when the migration has not been applied', async function () {
@@ -89,7 +117,8 @@ describe('SQLite runtime settings', function () {
       await loadRuntimeSettings(knex);
       throw new Error('expected loadRuntimeSettings to fail');
     } catch (err) {
-      expect(err.message).to.include('db-migrations');
+      expect(err.message).to.include('no such table');
+      expect(err.message).to.not.include('db-migrations');
     }
   });
 });

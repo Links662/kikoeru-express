@@ -88,10 +88,26 @@ const normalizeMaxRecursionDepth = (value, fallback = DEFAULT_MAX_RECURSION_DEPT
 const normalizeRootFolders = (rootFolders, fallbackDepth = DEFAULT_MAX_RECURSION_DEPTH) => {
   if (!Array.isArray(rootFolders)) return [];
 
-  return rootFolders.map(rootFolder => ({
-    ...rootFolder,
-    maxRecursionDepth: normalizeMaxRecursionDepth(rootFolder.maxRecursionDepth, fallbackDepth)
-  }));
+  return rootFolders.map(rootFolder => {
+    const normalized = {
+      ...rootFolder,
+      maxRecursionDepth: normalizeMaxRecursionDepth(rootFolder.maxRecursionDepth, fallbackDepth)
+    };
+    const id = Number(rootFolder.id);
+    if (Number.isInteger(id) && id > 0) {
+      normalized.id = id;
+    } else {
+      delete normalized.id;
+    }
+    return normalized;
+  });
+};
+
+const findRootFolder = work => {
+  const rootFolderId = Number(work.rootFolderId || work.root_folder_id);
+  return Number.isInteger(rootFolderId) && rootFolderId > 0
+    ? config.rootFolders.find(rootFolder => rootFolder.id === rootFolderId)
+    : undefined;
 };
 
 const pick = (source, keys) => {
@@ -227,6 +243,7 @@ module.exports = {
   runtimeKeys,
   normalizeMaxRecursionDepth,
   normalizeRootFolders,
+  findRootFolder,
   setBootstrapConfig,
   setRuntimeConfig,
   getRuntimeConfig,

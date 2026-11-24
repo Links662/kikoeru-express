@@ -31,11 +31,13 @@ describe('folder scanning depth', function () {
 
   it('uses the recursion depth configured on each root folder', async function () {
     const shallowRoot = {
+      id: 1,
       name: 'shallow',
       path: tempRoot,
       maxRecursionDepth: 2
     };
     const deepRoot = {
+      id: 2,
       name: 'deep',
       path: tempRoot,
       maxRecursionDepth: 3

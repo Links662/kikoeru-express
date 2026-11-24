@@ -30,7 +30,10 @@ router.put('/admin', async (req, res, next) => {
       const incomingConfig = filterConfig(req.body.config, 'write');
       await saveRuntimeSettings(_.pick(incomingConfig, runtimeKeys));
       setBootstrapConfig(_.pick(incomingConfig, bootstrapKeys));
-      res.send({ message: '保存成功.' })
+      res.send({
+        message: '保存成功.',
+        config: filterConfig(config, 'read')
+      })
     } catch(err) {
       next(err);
     }
