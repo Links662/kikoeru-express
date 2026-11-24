@@ -577,13 +577,19 @@ const createParallelLimiter = () => new LimitPromise(
 /**
  * 清理本地不再存在的音声: 将其元数据从数据库中移除，并删除其封面图片
  */
-const performCleanup = async () => {
+const performCleanup = async (folderCount, protectedWorkIds = new Set()) => {
   const removedWorkIds = [];
 
   await db.knex.transaction(async trx => {
     const works = await trx('t_work').select('id', 'root_folder_id', 'dir');
+    if (works.length > 0 && folderCount === 0) {
+      emitMainLog(' ! 本次未扫描到任何作品目录，为避免误删已停止清理.', 'error', 0);
+      return;
+    }
 
     for (const work of works) {
+      if (protectedWorkIds.has(work.id)) continue;
+
       // 检查每个音声的根文件夹或本地路径是否仍然存在
       const rootFolder = findRootFolder(work);
       const workPath = rootFolder ? path.join(rootFolder.path, work.dir) : null;
@@ -621,10 +627,10 @@ const prepareEnvironment = async () => {
   await removeTemporaryCoverFiles();
 };
 
-const runCleanupStep = async () => {
+const runCleanupStep = async (folderCount, protectedWorkIds) => {
   emitMainLog('清理本地不再存在的音声的数据与封面图片...', 'info', 0);
-  const removedCount = await performCleanup();
-  emitMainLog(`清理完成，共清理 ${removedCount} 个失效作品. 现在开始扫描...`, 'info', 0);
+  const removedCount = await performCleanup(folderCount, protectedWorkIds);
+  emitMainLog(`清理完成，共清理 ${removedCount} 个失效作品.`, 'info', 0);
   return removedCount;
 };
 
@@ -650,6 +656,96 @@ const handleDeduplication = (folderList) => {
     });
   }
   return { uniqueFolderList: uniqueList, duplicateNum };
+};
+
+const planMovedWorkRemap = ({
+  works,
+  folderList,
+  rootFolders,
+  pathExists = fs.existsSync
+}) => {
+  const candidatesByWorkId = new Map();
+  for (const folder of folderList) {
+    if (!candidatesByWorkId.has(folder.id)) {
+      candidatesByWorkId.set(folder.id, []);
+    }
+    candidatesByWorkId.get(folder.id).push(folder);
+  }
+
+  const remaps = [];
+  const ambiguous = [];
+
+  for (const work of works) {
+    const currentRootFolder = rootFolders.find(rootFolder => rootFolder.id === Number(work.root_folder_id));
+    const currentPath = currentRootFolder
+      ? path.join(currentRootFolder.path, work.dir)
+      : null;
+
+    if (currentPath && pathExists(currentPath)) continue;
+
+    const candidates = candidatesByWorkId.get(work.id) || [];
+    if (candidates.length === 1) {
+      const target = candidates[0];
+      const targetRootFolder = rootFolders.find(rootFolder => rootFolder.id === Number(target.rootFolderId));
+      if (targetRootFolder) {
+        remaps.push({ work, target, currentRootFolder, targetRootFolder });
+      }
+    } else if (candidates.length > 1) {
+      ambiguous.push({ work, candidates, currentRootFolder });
+    }
+  }
+
+  return { remaps, ambiguous };
+};
+
+const remapMovedWorks = async (folderList) => {
+  const works = await db.knex('t_work').select('id', 'root_folder_id', 'dir');
+  const { remaps, ambiguous } = planMovedWorkRemap({
+    works,
+    folderList,
+    rootFolders: config.rootFolders
+  });
+
+  if (remaps.length > 0) {
+    await db.knex.transaction(async trx => {
+      for (const { work, target } of remaps) {
+        const updated = await trx('t_work')
+          .where({
+            id: work.id,
+            root_folder_id: work.root_folder_id,
+            dir: work.dir
+          })
+          .update({
+            root_folder_id: target.rootFolderId,
+            dir: target.relativePath
+          });
+        if (updated !== 1) {
+          throw new Error(`作品 ${formatRJLabel(work.id)} 的路径在扫描期间发生变化，已中止重映射.`);
+        }
+      }
+    });
+  }
+
+  for (const { work, currentRootFolder, targetRootFolder, target } of remaps) {
+    const oldRoot = currentRootFolder ? currentRootFolder.name : `#${work.root_folder_id}`;
+    emitMainLog(
+      `[${formatRJLabel(work.id)}] 已重映射路径: ${oldRoot}:${work.dir} -> ${targetRootFolder.name}:${target.relativePath}`,
+      'info',
+      3
+    );
+  }
+  for (const { work, candidates } of ambiguous) {
+    emitMainLog(
+      ` ! [${formatRJLabel(work.id)}] 原路径不存在，但发现 ${candidates.length} 个候选目录，保留原记录等待人工处理.`,
+      'error',
+      3
+    );
+  }
+
+  return {
+    remappedCount: remaps.length,
+    protectedWorkIds: new Set(ambiguous.map(item => item.work.id))
+  };
 };
 
 const processSingleFolder = async (folder, counts, options = {}, limiter) => {
@@ -691,7 +787,7 @@ const processSingleFolder = async (folder, counts, options = {}, limiter) => {
 const finalizeScan = async (counts, options = {}) => {
   const message = options.dryRun
     ? `检查完成（封面未做修改）: 需要处理 ${counts.pending} 个作品.`
-    : `扫描完成: 新增 ${counts.added} 个，修复封面 ${counts.repaired} 个，升级封面 ${counts.upgraded} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`;
+    : `扫描完成: 重映射 ${counts.remapped} 个，新增 ${counts.added} 个，修复封面 ${counts.repaired} 个，升级封面 ${counts.upgraded} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`;
 
   console.log(` * ${message}`);
   process.send({ event: 'SCAN_FINISHED', payload: { message } });
@@ -701,7 +797,7 @@ const finalizeScan = async (counts, options = {}) => {
 };
 /**
  * 执行扫描
- * createCoverFolder => createSchema => cleanup => getAllFolderList => processAllFolder
+ * createCoverFolder => getAllFolderList => remap => cleanup => processAllFolder
  * @param {Object} options { coversOnly, refreshAllCovers, dryRun }
  */
 const performScan = async (options = {}) => {
@@ -711,22 +807,26 @@ const performScan = async (options = {}) => {
     // 1. 准备阶段
     await prepareEnvironment();
 
-    const counts = { added: 0, repaired: 0, upgraded: 0, failed: 0, skipped: 0, pending: 0, updated: 0 };
+    const counts = { added: 0, repaired: 0, upgraded: 0, failed: 0, skipped: 0, pending: 0, updated: 0, remapped: 0 };
 
-    // 2. 数据清理阶段
-    if (options.coversOnly) {
-      // 封面维护是定点操作，不删数据也不动数据库
-      emitMainLog(' * 只维护封面：不收录新作品，也不清理数据库.', 'info', 3);
-    } else if (config.skipCleanup) {
-      emitMainLog(' * 根据设置跳过清理.', 'info', 3);
-    } else {
-      await runCleanupStep();
-    }
-
-    // 3. 文件获取与去重阶段
+    // 2. 文件获取与去重阶段
     const folderList = await collectAllFolders();
     const { uniqueFolderList, duplicateNum } = handleDeduplication(folderList);
     counts.skipped += duplicateNum;
+
+    // 3. 路径重映射与数据清理阶段
+    if (options.coversOnly) {
+      // 封面维护是定点操作，不删数据也不动数据库
+      emitMainLog(' * 只维护封面：不收录新作品，也不清理数据库.', 'info', 3);
+    } else if (options.dryRun) {
+      emitMainLog(' * 试运行：不重映射路径，也不清理数据库.', 'info', 3);
+    } else if (config.skipCleanup) {
+      emitMainLog(' * 根据设置跳过路径重映射与清理.', 'info', 3);
+    } else {
+      const { remappedCount, protectedWorkIds } = await remapMovedWorks(folderList);
+      counts.remapped += remappedCount;
+      await runCleanupStep(folderList.length, protectedWorkIds);
+    }
 
     // 4. 核心处理阶段 (并行执行)
     await Promise.all(
@@ -878,6 +978,7 @@ module.exports = {
   performScan,
   performUpdate,
   performSubtitleScan,
+  planMovedWorkRemap,
   // 下面几个主要给测试用（封面维护的核心逻辑，不碰数据库）
   generateCoverFromMain,
   planCoverMaintenance,
