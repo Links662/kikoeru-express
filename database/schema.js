@@ -20,7 +20,6 @@ const createCoreTables = async () => {
       table.string('name').notNullable().unique();
       table.text('path').notNullable().unique();
       table.integer('max_recursion_depth').notNullable().defaultTo(2);
-      table.integer('position').notNullable().defaultTo(0);
     })
     .createTable('t_work', (table) => {
       table.increments();

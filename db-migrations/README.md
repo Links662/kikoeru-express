@@ -13,7 +13,7 @@
 ### 结构变更
 
 - 新增 `t_app_setting(key, value, updated_at)`，以 JSON 文本保存运行时配置。
-- 新增 `t_root_folder`，保存根目录名称、绝对路径、扫描深度和显示顺序。
+- 新增 `t_root_folder`，保存根目录名称、绝对路径和扫描深度。
 - 新数据库基线同步包含以上两张表，`dbVersion` 更新为 `20261125`。
 
 ### 手动迁移步骤
@@ -30,7 +30,20 @@
 
 - 执行 `PRAGMA foreign_key_check;`，结果应为空。
 - 确认 `t_app_setting` 和 `t_root_folder` 存在。
-- 启动服务时如果提示缺少运行时配置表，说明 SQL 脚本尚未执行。
+
+## 20261125 - 移除根目录 position
+
+迁移文件：`20261125_drop_root_folder_position.sql`
+
+执行前提：数据库中的 `t_root_folder` 仍包含旧 `position` 字段。
+
+### 结构变更
+
+- 重建 `t_root_folder`，移除 `position`。
+- 保留根目录 `id`、名称、路径和扫描深度。
+- 根目录加载顺序统一按 `id ASC`，不再提供持久化排序功能。
+
+如果数据库是使用更新后的 `20261125_split_runtime_config_to_sqlite.sql` 新建的，则不会创建 `position`，不需要执行此脚本。
 
 ## 20261125 - 作品根目录稳定 ID
 

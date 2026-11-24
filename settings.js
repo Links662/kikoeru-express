@@ -38,11 +38,8 @@ const loadRuntimeSettings = async (knex = getDatabaseKnex()) => {
   const [settingRows, rootFolderRows] = await Promise.all([
     knex(SETTING_TABLE).select('key', 'value'),
     knex(ROOT_FOLDER_TABLE)
-      .select('id', 'name', 'path', 'max_recursion_depth', 'position')
-      .orderBy([
-        { column: 'position', order: 'asc' },
-        { column: 'id', order: 'asc' }
-      ])
+      .select('id', 'name', 'path', 'max_recursion_depth')
+      .orderBy('id', 'asc')
   ]);
 
   const runtimeSettings = {};
@@ -91,7 +88,7 @@ const saveRuntimeSettings = async (newSettings, knex = getDatabaseKnex()) => {
       const currentRootFolders = await trx(ROOT_FOLDER_TABLE).select('*');
       const usedIds = new Set();
 
-      for (const [position, rootFolder] of rootFolders.entries()) {
+      for (const rootFolder of rootFolders) {
         const existingRootFolder = rootFolder.id
           ? currentRootFolders.find(row => Number(row.id) === Number(rootFolder.id))
           : null;
@@ -105,15 +102,13 @@ const saveRuntimeSettings = async (newSettings, knex = getDatabaseKnex()) => {
             .update({
               name: rootFolder.name,
               path: rootFolder.path,
-              max_recursion_depth: rootFolder.maxRecursionDepth,
-              position
+              max_recursion_depth: rootFolder.maxRecursionDepth
             });
         } else {
           const insertedIds = await trx(ROOT_FOLDER_TABLE).insert({
             name: rootFolder.name,
             path: rootFolder.path,
-            max_recursion_depth: rootFolder.maxRecursionDepth,
-            position
+            max_recursion_depth: rootFolder.maxRecursionDepth
           });
           usedIds.add(Number(insertedIds[0]));
         }
@@ -128,11 +123,8 @@ const saveRuntimeSettings = async (newSettings, knex = getDatabaseKnex()) => {
 
       savedRootFolders = normalizeStoredRootFolders(
         await trx(ROOT_FOLDER_TABLE)
-          .select('id', 'name', 'path', 'max_recursion_depth', 'position')
-          .orderBy([
-            { column: 'position', order: 'asc' },
-            { column: 'id', order: 'asc' }
-          ])
+          .select('id', 'name', 'path', 'max_recursion_depth')
+          .orderBy('id', 'asc')
       );
     }
   });

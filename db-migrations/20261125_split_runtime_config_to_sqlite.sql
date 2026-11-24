@@ -10,8 +10,7 @@ CREATE TABLE IF NOT EXISTS t_root_folder (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   path TEXT NOT NULL UNIQUE,
-  max_recursion_depth INTEGER NOT NULL DEFAULT 2,
-  position INTEGER NOT NULL DEFAULT 0
+  max_recursion_depth INTEGER NOT NULL DEFAULT 2
 );
 
 INSERT OR IGNORE INTO t_app_setting (key, value) VALUES
@@ -36,7 +35,7 @@ INSERT OR IGNORE INTO t_app_setting (key, value) VALUES
 
 -- 根目录不能从旧 config.json 自动读取，请在迁移后通过“存储管理”重新添加；
 -- 也可以手动执行类似下面的语句（请替换为实际名称、绝对路径和扫描深度）：
--- INSERT INTO t_root_folder (name, path, max_recursion_depth, position)
--- VALUES ('media', '/path/to/VoiceWork', 2, 0);
+-- INSERT INTO t_root_folder (name, path, max_recursion_depth)
+-- VALUES ('media', '/path/to/VoiceWork', 2);
 
 COMMIT;

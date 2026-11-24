@@ -28,7 +28,6 @@ describe('SQLite runtime settings', function () {
       table.string('name').notNullable().unique();
       table.text('path').notNullable().unique();
       table.integer('max_recursion_depth').notNullable().defaultTo(2);
-      table.integer('position').notNullable().defaultTo(0);
     });
     await knex.schema.createTable('t_work', table => {
       table.increments('id');
@@ -48,10 +47,10 @@ describe('SQLite runtime settings', function () {
       { key: 'rewindSeekTime', value: '10' }
     ]);
     const [firstId] = await knex('t_root_folder').insert({
-      name: 'first', path: '/first', max_recursion_depth: 1, position: 0
+      name: 'first', path: '/first', max_recursion_depth: 1
     });
     const [secondId] = await knex('t_root_folder').insert({
-      name: 'second', path: '/second', max_recursion_depth: 3, position: 1
+      name: 'second', path: '/second', max_recursion_depth: 3
     });
 
     await loadRuntimeSettings(knex);
@@ -69,8 +68,7 @@ describe('SQLite runtime settings', function () {
     const [rootId] = await knex('t_root_folder').insert({
       name: 'media',
       path: '/media',
-      max_recursion_depth: 2,
-      position: 0
+      max_recursion_depth: 2
     });
     await knex('t_work').insert({
       dir: 'RJ123456',
