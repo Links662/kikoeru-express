@@ -3,9 +3,10 @@ if (typeof process.send !== 'function') {
   process.exit(1);
 }
 
-const { performScan } = require('./scannerModules');
+const { loadWorkerSettings } = require('./workerSettings');
 
-performScan({ coversOnly: true })
+loadWorkerSettings()
+  .then(({ performScan }) => performScan({ coversOnly: true }))
   .catch((err) => {
     console.error(err);
     process.exit(1);

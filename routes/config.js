@@ -1,7 +1,14 @@
 const _ = require('lodash'); 
 const express = require('express');
 const router = express.Router();
-const { config, setConfig, sharedConfigHandle } = require('../config');
+const {
+  config,
+  bootstrapKeys,
+  runtimeKeys,
+  setBootstrapConfig,
+  sharedConfigHandle
+} = require('../config');
+const { saveRuntimeSettings } = require('../settings');
 
 const filterConfig = (_config, option = 'read') => {
   const currentConfig = config;
@@ -17,11 +24,12 @@ const filterConfig = (_config, option = 'read') => {
   return configClone;
 }
 
-router.put('/admin', (req, res, next) => {
+router.put('/admin', async (req, res, next) => {
   if (!config.auth || req.user.group === 'administrator') {
     try {
-      // Note: setConfig uses Object.assign to merge new configs
-      setConfig(filterConfig(req.body.config, 'write'));
+      const incomingConfig = filterConfig(req.body.config, 'write');
+      await saveRuntimeSettings(_.pick(incomingConfig, runtimeKeys));
+      setBootstrapConfig(_.pick(incomingConfig, bootstrapKeys));
       res.send({ message: '保存成功.' })
     } catch(err) {
       next(err);

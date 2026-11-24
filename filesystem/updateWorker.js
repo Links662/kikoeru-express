@@ -3,12 +3,11 @@ if (typeof process.send !== 'function') {
   process.exit(1);
 }
 
-const { performUpdate } = require('./scannerModules');
+const { loadWorkerSettings } = require('./workerSettings');
 
-performUpdate({ refreshAll: true })
-  .then(() => {
-    process.exit(0);
-  })
+loadWorkerSettings()
+  .then(({ performUpdate }) => performUpdate({ refreshAll: true }))
+  .then(() => process.exit(0))
   .catch((err) => {
     console.error(err);
     process.exit(1);

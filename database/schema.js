@@ -1,6 +1,7 @@
 const { knex } = require('./db');
+const { runtimeDefaults } = require('../config');
 
-const dbVersion = '20261018';
+const dbVersion = '20261125';
 
 const createCoreTables = async () => {
   const exists = await knex.schema.hasTable('t_circle');
@@ -74,8 +75,30 @@ const createCoreTables = async () => {
       table.string('field').notNullable();
       table.string('item_id').notNullable();
       table.primary(['user_name', 'field', 'item_id']);
+    })
+    .createTable('t_app_setting', (table) => {
+      table.string('key').primary();
+      table.text('value').notNullable();
+      table.timestamp('updated_at').notNullable().defaultTo(knex.fn.now());
+    })
+    .createTable('t_root_folder', (table) => {
+      table.increments('id');
+      table.string('name').notNullable().unique();
+      table.text('path').notNullable().unique();
+      table.integer('max_recursion_depth').notNullable().defaultTo(2);
+      table.integer('position').notNullable().defaultTo(0);
     });
-  
+
+  const settingRows = Object.entries(runtimeDefaults)
+    .filter(([key]) => key !== 'rootFolders')
+    .map(([key, value]) => ({
+      key,
+      value: JSON.stringify(value)
+    }));
+  if (settingRows.length > 0) {
+    await knex('t_app_setting').insert(settingRows);
+  }
+
   console.log(' * 成功构建核心数据库结构.');
 };
 

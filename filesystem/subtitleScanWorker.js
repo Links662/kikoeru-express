@@ -3,9 +3,10 @@ if (typeof process.send !== 'function') {
   process.exit(1);
 }
 
-const { performSubtitleScan } = require('./scannerModules');
+const { loadWorkerSettings } = require('./workerSettings');
 
-performSubtitleScan()
+loadWorkerSettings()
+  .then(({ performSubtitleScan }) => performSubtitleScan())
   .catch((err) => {
     console.error(err);
     process.exit(1);

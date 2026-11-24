@@ -566,8 +566,9 @@ const processFolder = async (folder, options = {}) => {
   }
 };
 
-const MAX = config.maxParallelism;
-const limitP = new LimitPromise(MAX);
+const createParallelLimiter = () => new LimitPromise(
+  Math.max(1, Number(config.maxParallelism) || 16)
+);
 /**
  * 清理本地不再存在的音声: 将其元数据从数据库中移除，并删除其封面图片
  */
@@ -646,14 +647,14 @@ const handleDeduplication = (folderList) => {
   return { uniqueFolderList: uniqueList, duplicateNum };
 };
 
-const processSingleFolder = async (folder, counts, options = {}) => {
+const processSingleFolder = async (folder, counts, options = {}, limiter) => {
   const workId = folder.id;
   const rjLabel = formatRJLabel(workId);
   let result;
 
   try {
     // 将处理函数递交给并发控制器执行
-    result = await limitP.call(processFolder, folder, options);
+    result = await limiter.call(processFolder, folder, options);
   } catch (err) {
     // 单个作品出错不能让整场扫描挂掉，记成失败继续跑
     emitTaskLog(`[${rjLabel}] 处理出错: ${err.message}`, workId, 'error');
@@ -700,6 +701,8 @@ const finalizeScan = async (counts, options = {}) => {
  */
 const performScan = async (options = {}) => {
   try {
+    const limiter = createParallelLimiter();
+
     // 1. 准备阶段
     await prepareEnvironment();
 
@@ -722,7 +725,7 @@ const performScan = async (options = {}) => {
 
     // 4. 核心处理阶段 (并行执行)
     await Promise.all(
-      uniqueFolderList.map(folder => processSingleFolder(folder, counts, options))
+      uniqueFolderList.map(folder => processSingleFolder(folder, counts, options, limiter))
     );
 
     // 5. 收尾阶段
@@ -761,7 +764,6 @@ const updateMetadata = (id, options = {}) => {
     });
 };
 
-const updateMetadataLimited = (id, options = null) => limitP.call(updateMetadata, id, options);
 const scanSubtitleForWork = async (work, counts) => {
   const rjLabel = formatRJLabel(work.id);
   const rootFolder = config.rootFolders.find(folder => folder.name === work.root_folder);
@@ -793,6 +795,7 @@ const scanSubtitleForWork = async (work, counts) => {
 };
 
 const performSubtitleScan = async () => {
+  const limiter = createParallelLimiter();
   const works = await db.knex('t_work').select('id', 'root_folder', 'dir', 'subtitle');
   const counts = {
     updated: 0,
@@ -801,7 +804,7 @@ const performSubtitleScan = async () => {
   };
 
   emitMainLog(` * 共 ${works.length} 个作品，开始扫描中文字幕...`, 'info', 3);
-  await Promise.all(works.map(work => limitP.call(scanSubtitleForWork, work, counts)));
+  await Promise.all(works.map(work => limiter.call(scanSubtitleForWork, work, counts)));
 
   const message = `中文字幕扫描完成: 更新 ${counts.updated} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`;
   console.log(` * ${message}`);
@@ -817,8 +820,9 @@ const performSubtitleScan = async () => {
 };
 
 const performUpdate = async (options = null) => {
+  const limiter = createParallelLimiter();
   const baseQuery = db.knex('t_work').select('id');
-  const processor = (id) => updateMetadataLimited(id, options);
+  const processor = (id) => limiter.call(updateMetadata, id, options);
 
   const counts = await refreshWorks(baseQuery, 'id', processor);
 

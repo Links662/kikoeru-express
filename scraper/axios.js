@@ -6,20 +6,19 @@ const Config = config;
 
 const axios = originAxios.create();
 
-const TUNNEL_OPTIONS = {
-  proxy: {
-    port: Config.httpProxyPort
-  }
-}
-if (Config.httpProxyHost) {
-  TUNNEL_OPTIONS.proxy.host = Config.httpProxyHost;
-}
-
 axios.interceptors.request.use(function (config) {
   if (Config.httpProxyPort) {
+    const tunnelOptions = {
+      proxy: {
+        port: Config.httpProxyPort
+      }
+    };
+    if (Config.httpProxyHost) {
+      tunnelOptions.proxy.host = Config.httpProxyHost;
+    }
     config.proxy = false; // 强制禁用环境变量中的代理配置
-    config.httpAgent = httpOverHttp(TUNNEL_OPTIONS);
-    config.httpsAgent = httpsOverHttp(TUNNEL_OPTIONS);
+    config.httpAgent = httpOverHttp(tunnelOptions);
+    config.httpsAgent = httpsOverHttp(tunnelOptions);
   }
   
   return config

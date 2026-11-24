@@ -1,0 +1,23 @@
+{
+  "version": "0.6.2",
+  "production": false,
+  "dbBusyTimeout": 1000,
+  "coverFolderDir": "covers",
+  "databaseFolderDir": "sqlite",
+  "coverUseDefaultPath": false,
+  "dbUseDefaultPath": true,
+  "voiceWorkDefaultPath": "VoiceWork",
+  "auth": true,
+  "jwtsecret": "REPLACE_WITH_A_LONG_RANDOM_SECRET",
+  "listenPort": 8888,
+  "blockRemoteConnection": false,
+  "behindProxy": false,
+  "httpsEnabled": false,
+  "httpsPrivateKey": "kikoeru.key",
+  "httpsCert": "kikoeru.crt",
+  "httpsPort": 8443,
+  "enableGzip": true,
+  "offloadMedia": false,
+  "offloadStreamPath": "/media/stream/",
+  "offloadDownloadPath": "/media/download/"
+}

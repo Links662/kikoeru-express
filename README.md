@@ -103,7 +103,9 @@ docker compose up -d
 ├── api.js                   # 为 express 实例添加路由与 jwt 验证中间件
 ├── app.js                   # 项目入口文件
 ├── socket.js                # 用于初始化socket.io
-├── config.js                # 用于生成与修改 config.json 配置文件，导出公共配置以及升级锁
+├── config.js                # 启动引导配置与运行时配置的合并入口
+├── settings.js              # 从 SQLite 加载和保存运行时配置
+├── config.example.json      # 精简后的启动引导配置示例
 ├── Dockerfile               # 用于构建 docker 镜像的文本文件
 ├── docker-compose.yml       # 用于使用docker-compose一键构建环境
 ├── package.json             # npm 脚本和依赖项

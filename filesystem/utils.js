@@ -152,7 +152,7 @@ const toTree = (tracks, workDir, rootFolder) => {
  */
 async function* getFolderList(rootFolder, current = '', depth = 0, callback = function addMainLog(){} ) {
   const folders = await fs.promises.readdir(path.join(rootFolder.path, current));    
-  const maxRecursionDepth = rootFolder.maxRecursionDepth || config.scannerMaxRecursionDepth || 2;
+  const maxRecursionDepth = rootFolder.maxRecursionDepth || 2;
 
   for (const folder of folders) {
     const absolutePath = path.resolve(rootFolder.path, current, folder);

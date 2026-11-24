@@ -4,6 +4,34 @@
 
 # 数据库版本变更记录
 
+## 20261125 - 运行时配置迁移到 SQLite
+
+迁移文件：`20261125_split_runtime_config_to_sqlite.sql`
+
+执行前提：数据库已执行完 `20261018` 系列迁移。
+
+### 结构变更
+
+- 新增 `t_app_setting(key, value, updated_at)`，以 JSON 文本保存运行时配置。
+- 新增 `t_root_folder`，保存根目录名称、绝对路径、扫描深度和显示顺序。
+- 新数据库基线同步包含以上两张表，`dbVersion` 更新为 `20261125`。
+
+### 手动迁移步骤
+
+1. 停止 Kikoeru 服务并备份 `sqlite/db.sqlite3` 与 `config/config.json`。
+2. 对数据库执行 `20261125_split_runtime_config_to_sqlite.sql`。
+3. 使用仓库根目录的 `config.example.json` 替换 `config/config.json`，保留原 JWT 密钥并修改为实际部署路径。
+4. 启动服务后，在“存储管理”中重新添加原根目录。
+5. 检查运行时设置后再保存一次，确认 `t_app_setting` 内容符合预期。
+
+`t_root_folder` 不包含自动导入逻辑，因为迁移脚本无法读取旧 JSON 配置中的路径。
+
+### 验证
+
+- 执行 `PRAGMA foreign_key_check;`，结果应为空。
+- 确认 `t_app_setting` 和 `t_root_folder` 存在。
+- 启动服务时如果提示缺少运行时配置表，说明 SQL 脚本尚未执行。
+
 ## 20261018 - 年龄分级不允许为空
 
 迁移文件：`20261018_make_t_work_nsfw_not_null.sql`

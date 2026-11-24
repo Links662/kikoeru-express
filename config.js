@@ -1,56 +1,41 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto')
+const crypto = require('crypto');
 
 const configFolderDir = path.join(__dirname, 'config');
 const configPath = path.join(configFolderDir, 'config.json');
 const pjson = require('./package.json');
 
-// Before the following version, there is no version tracking
 const versionWithoutVerTracking = '0.4.1';
 const DEFAULT_MAX_RECURSION_DEPTH = 2;
-
-let config = {};
 
 const voiceWorkDefaultPath = () => {
   if (process.env.IS_DOCKER) {
     return '/usr/src/kikoeru/VoiceWork';
-  } else {
-    return path.join(__dirname, 'VoiceWork');
   }
-}
+  return path.join(__dirname, 'VoiceWork');
+};
 
-const defaultConfig = {
+const clone = value => {
+  if (Array.isArray(value)) return value.map(clone);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, clone(item)]));
+  }
+  return value;
+};
+
+// These values are needed before SQLite can be opened or before the HTTP server starts.
+const bootstrapDefaults = {
   version: pjson.version,
-  production: process.env.NODE_ENV === 'production' ? true : false,
+  production: process.env.NODE_ENV === 'production',
   dbBusyTimeout: 1000,
-  checkUpdate: true,
-  checkBetaUpdate: false,
-  maxParallelism: 16,
-  rootFolders: [
-    // {
-    //   name: '',
-    //   path: '',
-    //   maxRecursionDepth: 2
-    // }
-  ],
   coverFolderDir: path.join(__dirname, 'covers'),
   databaseFolderDir: path.join(__dirname, 'sqlite'),
-  coverUseDefaultPath: false, // Ignores coverFolderDir if set to true
-  dbUseDefaultPath: true, // Ignores databaseFolderDir if set to true
+  coverUseDefaultPath: false,
+  dbUseDefaultPath: true,
   voiceWorkDefaultPath: voiceWorkDefaultPath(),
-  auth: process.env.NODE_ENV === 'production' ? true : false,
-  jwtsecret: crypto.randomBytes(32).toString('hex'),
-  expiresIn: 2592000,
-  pageSize: 12,
-  listPageSize: 50,
-  tagLanguage: 'zh-CN',
-  retry: 5,
-  dlsiteTimeout: 10000,
-  hvdbTimeout: 10000,
-  retryDelay: 2000,
-  httpProxyHost: '',
-  httpProxyPort: 0,
+  auth: process.env.NODE_ENV === 'production',
+  jwtsecret: process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex'),
   listenPort: 8888,
   blockRemoteConnection: false,
   behindProxy: false,
@@ -58,18 +43,41 @@ const defaultConfig = {
   httpsPrivateKey: 'kikoeru.key',
   httpsCert: 'kikoeru.crt',
   httpsPort: 8443,
-  skipCleanup: false,
-  // 本地生成的缩略图会在这些天之后尝试换成 DLsite 的原图（0 = 每次扫描都试）
-  coverUpgradeIntervalDays: 7,
-  // 允许升级为 DLsite 原图的缩略图类型；sam 是降级最明显的那个，240x240 也可以加进来
-  coverUpgradeTypes: ['sam'],
   enableGzip: true,
+  offloadMedia: false,
+  offloadStreamPath: '/media/stream/',
+  offloadDownloadPath: '/media/download/'
+};
+
+// Runtime settings are loaded from SQLite after the database is initialized.
+const runtimeDefaults = {
+  rootFolders: [],
+  checkUpdate: true,
+  checkBetaUpdate: false,
+  maxParallelism: 16,
+  pageSize: 12,
+  listPageSize: 50,
+  recentCount: 20,
   rewindSeekTime: 5,
   forwardSeekTime: 30,
-  offloadMedia: false,
-  recentCount: 20,
-  offloadStreamPath: '/media/stream/',          // /media/stream/RJ123456/subdirs/track.mp3
-  offloadDownloadPath: '/media/download/'      // /media/download/RJ123456/subdirs/track.mp3
+  tagLanguage: 'zh-CN',
+  retry: 5,
+  dlsiteTimeout: 10000,
+  hvdbTimeout: 10000,
+  retryDelay: 2000,
+  httpProxyHost: '',
+  httpProxyPort: 0,
+  skipCleanup: false,
+  coverUpgradeIntervalDays: 7,
+  coverUpgradeTypes: ['sam']
+};
+
+const bootstrapKeys = Object.keys(bootstrapDefaults);
+const runtimeKeys = Object.keys(runtimeDefaults);
+
+let config = {
+  ...clone(bootstrapDefaults),
+  ...clone(runtimeDefaults)
 };
 
 const normalizeMaxRecursionDepth = (value, fallback = DEFAULT_MAX_RECURSION_DEPTH) => {
@@ -86,115 +94,143 @@ const normalizeRootFolders = (rootFolders, fallbackDepth = DEFAULT_MAX_RECURSION
   }));
 };
 
-const initConfig = (writeConfigToFile = !process.env.FREEZE_CONFIG_FILE) => {
-  config = Object.assign(config, defaultConfig);
-  if (writeConfigToFile) {
-    fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, "\t"));
-  }
-}
-
-const setConfig = (newConfig, writeConfigToFile = !process.env.FREEZE_CONFIG_FILE) => {
-  // Prevent changing some values, overwrite with old ones
-  newConfig.production = config.production;
-  if (process.env.NODE_ENV === 'production' || config.production) {
-    newConfig.auth = true;
-  }
-  newConfig.jwtsecret = config.jwtsecret;
-
-  // Merge config
-  config = Object.assign(config, newConfig);
-  const legacyMaxRecursionDepth = normalizeMaxRecursionDepth(config.scannerMaxRecursionDepth);
-  config.rootFolders = normalizeRootFolders(config.rootFolders, legacyMaxRecursionDepth);
-  delete config.scannerMaxRecursionDepth;
-  if (writeConfigToFile) {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, "\t"));
-  }
-}
-
-const readConfig = () => {
-  config = JSON.parse(fs.readFileSync(configPath));
-  for (let key in defaultConfig) {
-    if (!config.hasOwnProperty(key)) {
-      if (key === 'version') {
-        config['version'] = versionWithoutVerTracking;
-      } else {
-        config[key] = defaultConfig[key];
-      }
+const pick = (source, keys) => {
+  const result = {};
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      result[key] = clone(source[key]);
     }
   }
+  return result;
+};
 
-  const legacyMaxRecursionDepth = normalizeMaxRecursionDepth(config.scannerMaxRecursionDepth);
-  config.rootFolders = normalizeRootFolders(config.rootFolders, legacyMaxRecursionDepth);
-  delete config.scannerMaxRecursionDepth;
-
-  // md5secret 是旧密码哈希（md5(密码 + md5secret)）用的，现在密码走 scrypt，
-  // 这个键已经没人读：老 config.json 里残留的值直接丢掉，下次保存设置时会从文件里消失
-  delete config.md5secret;
-
-  // Support reading relative path
-  // When config is saved in admin panel, it will still be stored as absolute path 
-  if(!path.isAbsolute(config.coverFolderDir)) {
+const applyBootstrapRules = () => {
+  if (!path.isAbsolute(config.coverFolderDir)) {
     config.coverFolderDir = path.join(__dirname, config.coverFolderDir);
   }
-  if(!path.isAbsolute(config.databaseFolderDir)) {
+  if (!path.isAbsolute(config.databaseFolderDir)) {
     config.databaseFolderDir = path.join(__dirname, config.databaseFolderDir);
   }
-
-  // Use ./covers and ./sqlite to override settings, ignoring corresponding fields in config
+  if (!path.isAbsolute(config.voiceWorkDefaultPath)) {
+    config.voiceWorkDefaultPath = path.join(__dirname, config.voiceWorkDefaultPath);
+  }
   if (config.coverUseDefaultPath) {
     config.coverFolderDir = path.join(__dirname, 'covers');
   }
   if (config.dbUseDefaultPath) {
     config.databaseFolderDir = path.join(__dirname, 'sqlite');
   }
-
   if (process.env.NODE_ENV === 'production' || config.production) {
     config.auth = true;
     config.production = true;
   }
 };
 
+const getBootstrapConfig = () => pick(config, bootstrapKeys);
+
+const writeConfigFile = () => {
+  if (process.env.FREEZE_CONFIG_FILE) return;
+  fs.writeFileSync(configPath, JSON.stringify(getBootstrapConfig(), null, '\t'));
+};
+
+const initConfig = () => {
+  config = {
+    ...clone(bootstrapDefaults),
+    ...clone(runtimeDefaults)
+  };
+  applyBootstrapRules();
+  writeConfigFile();
+};
+
+const readConfig = () => {
+  const savedConfig = JSON.parse(fs.readFileSync(configPath));
+  const loadedBootstrap = {};
+
+  for (const key of bootstrapKeys) {
+    loadedBootstrap[key] = Object.prototype.hasOwnProperty.call(savedConfig, key)
+      ? savedConfig[key]
+      : (key === 'version' ? versionWithoutVerTracking : clone(bootstrapDefaults[key]));
+  }
+
+  config = {
+    ...clone(bootstrapDefaults),
+    ...loadedBootstrap,
+    ...clone(runtimeDefaults)
+  };
+  applyBootstrapRules();
+};
+
+const setBootstrapConfig = (newConfig, writeConfigToFile = !process.env.FREEZE_CONFIG_FILE) => {
+  const update = pick(newConfig, bootstrapKeys);
+  update.production = config.production;
+  update.jwtsecret = config.jwtsecret;
+  if (process.env.NODE_ENV === 'production' || config.production) {
+    update.auth = true;
+  }
+
+  config = Object.assign(config, update);
+  applyBootstrapRules();
+  if (writeConfigToFile) writeConfigFile();
+};
+
+const setRuntimeConfig = (newConfig) => {
+  const update = pick(newConfig, runtimeKeys);
+  if (Object.prototype.hasOwnProperty.call(update, 'rootFolders')) {
+    update.rootFolders = normalizeRootFolders(update.rootFolders);
+  }
+  config = Object.assign(config, update);
+};
+
+const getRuntimeConfig = () => pick(config, runtimeKeys);
+
 class publicConfig {
   get rewindSeekTime() {
     return config.rewindSeekTime;
   }
+
   get forwardSeekTime() {
     return config.forwardSeekTime;
   }
+
   export() {
     return {
       rewindSeekTime: this.rewindSeekTime,
       forwardSeekTime: this.forwardSeekTime
-    }
+    };
   }
 }
 
 const sharedConfigHandle = new publicConfig();
 
-// This part runs when the module is initialized
-// TODO: refactor global side effect
 if (!fs.existsSync(configPath)) {
   if (!fs.existsSync(configFolderDir)) {
-    try {
-      fs.mkdirSync(configFolderDir, { recursive: true });
-    } catch(err) {
-      console.error(` ! 在创建存放配置文件的文件夹时出错: ${err.message}`);
-    }
+    fs.mkdirSync(configFolderDir, { recursive: true });
   }
-  const writeConfigToFile = !process.env.FREEZE_CONFIG_FILE;
-  initConfig(writeConfigToFile);
+  initConfig();
 } else {
   readConfig();
 }
 
 function getPageSize() {
-  return config.pageSize || 12;
+  return config.pageSize || runtimeDefaults.pageSize;
 }
 
 function getListPageSize() {
-  return config.listPageSize || 50;
+  return config.listPageSize || runtimeDefaults.listPageSize;
 }
 
 module.exports = {
-  setConfig, config, sharedConfigHandle, getPageSize, getListPageSize
+  config,
+  bootstrapDefaults,
+  runtimeDefaults,
+  bootstrapKeys,
+  runtimeKeys,
+  normalizeMaxRecursionDepth,
+  normalizeRootFolders,
+  setBootstrapConfig,
+  setRuntimeConfig,
+  getRuntimeConfig,
+  sharedConfigHandle,
+  getPageSize,
+  getListPageSize
 };

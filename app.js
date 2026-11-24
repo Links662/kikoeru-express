@@ -23,12 +23,10 @@ if (process.env.NODE_ENV === 'test' || process.env.CRASH_ON_UNHANDLED) {
 const { initApp }= require('./database/init');
 const initSocket = require('./socket');
 const { config } = require('./config');
+const { loadRuntimeSettings } = require('./settings');
 const passwordReset = require('./routes/passwordReset');
 const api = require('./api');
 const app = express();
-
-// 初始化或迁移数据库与配置（非阻塞）
-initApp().catch(err => console.error(err));
 
 // 密码重置模式（KIKOERU_PASSWORD_RESET=1）：只提供重置页面，不挂载任何业务接口
 const resetMode = passwordReset.isResetMode();
@@ -114,32 +112,44 @@ if (config.httpsEnabled) {
   }
 }
 
-// websocket 握手依赖 http 服务（重置模式下不初始化）
-if (!resetMode) {
-  initSocket(server);
-  if (config.httpsEnabled) {
-    initSocket(httpsServer);
+const initializeAndListen = async () => {
+  await initApp();
+  if (!resetMode) {
+    await loadRuntimeSettings();
   }
-}
 
-const listenPort = process.env.PORT || config.listenPort || 8888;
-const localOnly = config.blockRemoteConnection;
-
-// Note: for some unknown reasons, :: does not always work 
-localOnly ? server.listen(listenPort, 'localhost') : server.listen(listenPort)
-if (config.httpsEnabled && httpsSuccess) {
-  localOnly ? httpsServer.listen(config.httpsPort, 'localhost') : httpsServer.listen(config.httpsPort)
-}
-
-server.on('listening', () => {
-  console.log('Express server started on port %s at %s', server.address().port, server.address().address);
-  if (resetMode) {
-    passwordReset.printResetInstructions(server.address().port);
+  // websocket 握手依赖 http 服务（重置模式下不初始化）
+  if (!resetMode) {
+    initSocket(server);
+    if (config.httpsEnabled) {
+      initSocket(httpsServer);
+    }
   }
-})
 
-if (config.httpsEnabled && httpsSuccess) {
-  httpsServer.on('listening', () => {
-    console.log('Express server started on port %s at %s', httpsServer.address().port, httpsServer.address().address);
+  const listenPort = process.env.PORT || config.listenPort || 8888;
+  const localOnly = config.blockRemoteConnection;
+
+  // Note: for some unknown reasons, :: does not always work
+  localOnly ? server.listen(listenPort, 'localhost') : server.listen(listenPort)
+  if (config.httpsEnabled && httpsSuccess) {
+    localOnly ? httpsServer.listen(config.httpsPort, 'localhost') : httpsServer.listen(config.httpsPort)
+  }
+
+  server.on('listening', () => {
+    console.log('Express server started on port %s at %s', server.address().port, server.address().address);
+    if (resetMode) {
+      passwordReset.printResetInstructions(server.address().port);
+    }
   })
-}
+
+  if (config.httpsEnabled && httpsSuccess) {
+    httpsServer.on('listening', () => {
+      console.log('Express server started on port %s at %s', httpsServer.address().port, httpsServer.address().address);
+    })
+  }
+};
+
+initializeAndListen().catch(err => {
+  console.error('应用初始化失败:', err.message || err);
+  process.exit(1);
+});
