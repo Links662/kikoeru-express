@@ -8,8 +8,6 @@ const compression = require('compression');
 const bodyParser = require('body-parser');
 const history = require('connect-history-api-fallback');
 const http = require('http');
-const https = require('https');
-const fs = require('fs');
 
 // Crash the process on "unhandled promise rejection" when NODE_ENV=test or CRASH_ON_UNHANDLED exists
 if (process.env.NODE_ENV === 'test' || process.env.CRASH_ON_UNHANDLED) {
@@ -87,22 +85,8 @@ app.use((err, req, res, next) => {
   }
 });
 
-// Create HTTP and HTTPS server
+// Create HTTP server
 const server = http.createServer(app);
-let httpsServer = null;
-let httpsSuccess = false;
-if (config.httpsEnabled) {
-  try {
-    httpsServer = https.createServer({
-      key: fs.readFileSync(config.httpsPrivateKey),
-      cert: fs.readFileSync(config.httpsCert),
-    },app);
-    httpsSuccess = true;
-  } catch (err) {
-    console.error('HTTPS服务器启动失败，请检查证书位置以及是否文件可读')
-    console.error(err);
-  }
-}
 
 const initializeAndListen = async () => {
   await initApp();
@@ -113,9 +97,6 @@ const initializeAndListen = async () => {
   // websocket 握手依赖 http 服务（重置模式下不初始化）
   if (!resetMode) {
     initSocket(server);
-    if (config.httpsEnabled) {
-      initSocket(httpsServer);
-    }
   }
 
   const listenPort = process.env.PORT || config.listenPort || 8888;
@@ -123,9 +104,6 @@ const initializeAndListen = async () => {
 
   // Note: for some unknown reasons, :: does not always work
   localOnly ? server.listen(listenPort, 'localhost') : server.listen(listenPort)
-  if (config.httpsEnabled && httpsSuccess) {
-    localOnly ? httpsServer.listen(config.httpsPort, 'localhost') : httpsServer.listen(config.httpsPort)
-  }
 
   server.on('listening', () => {
     console.log('Express server started on port %s at %s', server.address().port, server.address().address);
@@ -134,11 +112,6 @@ const initializeAndListen = async () => {
     }
   })
 
-  if (config.httpsEnabled && httpsSuccess) {
-    httpsServer.on('listening', () => {
-      console.log('Express server started on port %s at %s', httpsServer.address().port, httpsServer.address().address);
-    })
-  }
 };
 
 initializeAndListen().catch(err => {
