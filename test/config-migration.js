@@ -98,8 +98,8 @@ describe('runtime settings migration', function () {
       await exec(database, fs.readFileSync(migrationPath, 'utf8'));
       await exec(database, `
         INSERT INTO t_circle (id, name) VALUES (1, 'circle');
-        INSERT INTO t_root_folder (name, path, max_recursion_depth, position)
-        VALUES ('media', '/media', 2, 0);
+        INSERT INTO t_root_folder (name, path, max_recursion_depth)
+        VALUES ('media', '/media', 2);
         INSERT INTO t_work (root_folder, dir, title, circle_id)
         VALUES ('media', 'RJ123456', 'title', 1);
       `);

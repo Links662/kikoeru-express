@@ -46,14 +46,6 @@ if (config.enableGzip) {
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
-// For dev purpose only
-if (process.env.NODE_ENV === 'development') {
-  // eslint-disable-next-line node/no-unpublished-require
-  app.use('/media/stream/VoiceWork', express.static('VoiceWork'), require('serve-index')('VoiceWork', {'icons': true}));
-  // eslint-disable-next-line node/no-unpublished-require
-  app.use('/media/download/VoiceWork', express.static('VoiceWork'), require('serve-index')('VoiceWork', {'icons': true}));
-}
-
 if (resetMode) {
   // 重置模式下只有重置页面：不挂 history / 不挂业务接口 / 不挂前端静态资源
   app.use(passwordReset.router);

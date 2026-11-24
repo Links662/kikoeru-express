@@ -56,7 +56,6 @@
     "socket.io": "^4.7.0",
     "sqlite3": "^5.0.2",
     "tunnel-agent": "^0.6.0",
-    "url-join": "^4.0.1",
     "uuid": "^8.3.2"
   },
   "devDependencies": {
@@ -64,7 +63,6 @@
     "cross-env": "^7.0.3",
     "eslint": "^7.25.0",
     "eslint-plugin-node": "^11.1.0",
-    "mocha": "^8.3.2",
-    "serve-index": "^1.9.1"
+    "mocha": "^8.3.2"
   }
 }

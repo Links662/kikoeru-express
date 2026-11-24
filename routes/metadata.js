@@ -206,7 +206,7 @@ router.get('/tracks/:id',
         const rootFolder = findRootFolder(work);
         if (rootFolder) {
           getTrackList(req.params.id, path.join(rootFolder.path, work.dir))
-            .then(tracks => res.send(toTree(tracks, work.dir, rootFolder)))
+            .then(tracks => res.send(toTree(tracks)))
             .catch(() => res.status(500).send({error: '获取文件列表失败，请检查文件是否存在或重新扫描清理'}));
         } else {
           res.status(500).send({error: `找不到根目录 #${work.root_folder_id}，请检查存储管理设置.`});

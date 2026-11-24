@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const recursiveReaddir = require('recursive-readdir');
 const { orderBy } = require('natural-orderby');
-const { joinFragments } = require('../routes/utils/url')
 const { config } = require('../config');
 const { formatRJLabel } = require('../utils/workId');
 
@@ -56,7 +55,7 @@ const hasLrc = (tracks) => Array.isArray(tracks) && tracks.some((track) => {
  * 转换成树状结构
  * @param {Array} tracks 
  */
-const toTree = (tracks, workDir, rootFolder) => {
+const toTree = (tracks) => {
   const tree = [];
 
   // 插入文件夹
@@ -84,28 +83,13 @@ const toTree = (tracks, workDir, rootFolder) => {
       fatherFolder = fatherFolder.find(item => item.type === 'folder' && item.title === folderName).children;
     });
 
-    // Path controlled by config.offloadMedia, config.offloadStreamPath and config.offloadDownloadPath
-    // If config.offloadMedia is enabled, by default, the paths are:
-    // /media/stream/VoiceWork/RJ123456/subdirs/track.mp3
-    // /media/download//VoiceWork/RJ123456/subdirs/track.mp3
-    //
-    // If the folder is deeper:
-    // /media/stream/VoiceWork/second/RJ123456/subdirs/track.mp3
-    // /media/download/VoiceWork/second/RJ123456/subdirs/track.mp3
-    let offloadStreamUrl = joinFragments(config.offloadStreamPath, rootFolder.name, workDir, track.subtitle || '', track.title);
-    let offloadDownloadUrl = joinFragments(config.offloadDownloadPath, rootFolder.name, workDir, track.subtitle || '', track.title);
-    if (process.platform === 'win32') {
-      offloadStreamUrl = offloadStreamUrl.replace(/\\/g, '/');
-      offloadDownloadUrl = offloadDownloadUrl.replace(/\\/g, '/');
-    }
-  
     const textBaseUrl = '/api/media/stream/'
     const mediaStreamBaseUrl = '/api/media/stream/'
     const mediaDownloadBaseUrl = '/api/media/download/'
     const textStreamBaseUrl = textBaseUrl + track.hash;    // Handle charset detection internally with jschardet
-    const textDownloadBaseUrl = config.offloadMedia ? offloadDownloadUrl : mediaDownloadBaseUrl + track.hash;
-    const mediaStreamUrl = config.offloadMedia ? offloadStreamUrl : mediaStreamBaseUrl + track.hash;
-    const mediaDownloadUrl = config.offloadMedia ? offloadDownloadUrl : mediaDownloadBaseUrl + track.hash;
+    const textDownloadBaseUrl = mediaDownloadBaseUrl + track.hash;
+    const mediaStreamUrl = mediaStreamBaseUrl + track.hash;
+    const mediaDownloadUrl = mediaDownloadBaseUrl + track.hash;
 
     if (track.ext === '.txt' || track.ext === '.lrc' || track.ext === '.srt' || track.ext === '.ass') {
       fatherFolder.push({

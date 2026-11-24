@@ -43,10 +43,7 @@ const bootstrapDefaults = {
   httpsPrivateKey: 'kikoeru.key',
   httpsCert: 'kikoeru.crt',
   httpsPort: 8443,
-  enableGzip: true,
-  offloadMedia: false,
-  offloadStreamPath: '/media/stream/',
-  offloadDownloadPath: '/media/download/'
+  enableGzip: true
 };
 
 // Runtime settings are loaded from SQLite after the database is initialized.
