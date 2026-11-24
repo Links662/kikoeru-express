@@ -40,7 +40,6 @@ RUN npx quasar build && npx quasar build -m pwa
 
 # Final stage
 FROM node:22-alpine
-ENV IS_DOCKER=true
 WORKDIR /usr/src/kikoeru
 
 # 系统依赖与 tini（放在 COPY 源码之前，源码变动不会让这一层失效）

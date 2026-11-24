@@ -9,13 +9,6 @@ const pjson = require('./package.json');
 const versionWithoutVerTracking = '0.4.1';
 const DEFAULT_MAX_RECURSION_DEPTH = 2;
 
-const voiceWorkDefaultPath = () => {
-  if (process.env.IS_DOCKER) {
-    return '/usr/src/kikoeru/VoiceWork';
-  }
-  return path.join(__dirname, 'VoiceWork');
-};
-
 const clone = value => {
   if (Array.isArray(value)) return value.map(clone);
   if (value && typeof value === 'object') {
@@ -33,7 +26,7 @@ const bootstrapDefaults = {
   databaseFolderDir: path.join(__dirname, 'sqlite'),
   coverUseDefaultPath: false,
   dbUseDefaultPath: true,
-  voiceWorkDefaultPath: voiceWorkDefaultPath(),
+  voiceWorkDefaultPath: path.join(__dirname, 'VoiceWork'),
   auth: process.env.NODE_ENV === 'production',
   jwtsecret: process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex'),
   listenPort: 8888,
@@ -45,9 +38,8 @@ const bootstrapDefaults = {
 // Runtime settings are loaded from SQLite after the database is initialized.
 const runtimeDefaults = {
   rootFolders: [],
-  checkUpdate: true,
-  checkBetaUpdate: false,
   maxParallelism: 16,
+  expiresIn: 2592000,
   pageSize: 12,
   listPageSize: 50,
   recentCount: 20,

@@ -58,6 +58,7 @@ describe('SQLite runtime settings', function () {
     expect(config.pageSize).to.equal(36);
     expect(config.rewindSeekTime).to.equal(10);
     expect(config.forwardSeekTime).to.equal(30);
+    expect(config.expiresIn).to.equal(2592000);
     expect(config.rootFolders).to.deep.equal([
       { id: firstId, name: 'first', path: '/first', maxRecursionDepth: 1 },
       { id: secondId, name: 'second', path: '/second', maxRecursionDepth: 3 }
@@ -77,6 +78,7 @@ describe('SQLite runtime settings', function () {
 
     await saveRuntimeSettings({
       pageSize: 48,
+      expiresIn: 3600,
       skipCleanup: true,
       rootFolders: [
         { id: rootId, name: 'renamed', path: '/moved', maxRecursionDepth: 3 }
@@ -89,11 +91,13 @@ describe('SQLite runtime settings', function () {
     const works = await knex('t_work').select();
 
     expect(config.pageSize).to.equal(48);
+    expect(config.expiresIn).to.equal(3600);
     expect(config.skipCleanup).to.equal(true);
     expect(config.rootFolders).to.deep.equal([
       { id: rootId, name: 'renamed', path: '/moved', maxRecursionDepth: 3 }
     ]);
     expect(settingsByKey.pageSize).to.equal('48');
+    expect(settingsByKey.expiresIn).to.equal('3600');
     expect(settingsByKey.skipCleanup).to.equal('true');
     expect(roots).to.have.length(1);
     expect(roots[0]).to.include({

@@ -14,14 +14,13 @@ CREATE TABLE IF NOT EXISTS t_root_folder (
 );
 
 INSERT OR IGNORE INTO t_app_setting (key, value) VALUES
-  ('checkUpdate', 'true'),
-  ('checkBetaUpdate', 'false'),
   ('maxParallelism', '16'),
   ('pageSize', '12'),
   ('listPageSize', '50'),
   ('recentCount', '20'),
   ('rewindSeekTime', '5'),
   ('forwardSeekTime', '30'),
+  ('expiresIn', '2592000'),
   ('tagLanguage', '"zh-CN"'),
   ('retry', '5'),
   ('dlsiteTimeout', '10000'),
@@ -32,6 +31,21 @@ INSERT OR IGNORE INTO t_app_setting (key, value) VALUES
   ('skipCleanup', 'false'),
   ('coverUpgradeIntervalDays', '7'),
   ('coverUpgradeTypes', '["sam"]');
+
+-- 清理已经移除的运行时配置记录。
+DELETE FROM t_app_setting
+WHERE key IN (
+  'checkUpdate',
+  'checkBetaUpdate',
+  'scannerMaxRecursionDepth',
+  'offloadMedia',
+  'offloadStreamPath',
+  'offloadDownloadPath',
+  'httpsEnabled',
+  'httpsPrivateKey',
+  'httpsCert',
+  'httpsPort'
+);
 
 -- 根目录不能从旧 config.json 自动读取，请在迁移后通过“存储管理”重新添加；
 -- 也可以手动执行类似下面的语句（请替换为实际名称、绝对路径和扫描深度）：

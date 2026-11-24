@@ -114,7 +114,7 @@ npm test
 
 - 默认配置在 `config.js`，运行配置在 `config/config.json`（gitignored）。首次导入 `config.js` 可能创建配置文件。
 - `FREEZE_CONFIG_FILE` 阻止写回配置文件。
-- `PORT` 覆盖监听端口；`IS_DOCKER` 改变默认媒体目录。
+- `PORT` 覆盖监听端口；默认媒体目录跟随后端代码目录下的 `VoiceWork`。
 - `NODE_ENV=production` 或 `config.production=true` 会强制开启认证。
 - `NODE_ENV=development` 会额外提供 `VoiceWork` 静态目录，仅用于开发。
 - 修改监听方式、认证、数据库或封面路径等启动配置后需要重启服务。

@@ -4,6 +4,7 @@ const expect = chai.expect;
 const fs = require('fs');
 const path = require('path');
 const sqlite3 = require('sqlite3');
+const { runtimeDefaults } = require('../config');
 
 const migrationPath = path.join(
   __dirname,
@@ -38,6 +39,10 @@ describe('runtime settings migration', function () {
         database,
         "SELECT value FROM t_app_setting WHERE key = 'pageSize'"
       );
+      const seededSettings = await all(
+        database,
+        'SELECT key, value FROM t_app_setting ORDER BY key'
+      );
       const foreignKeyErrors = await all(database, 'PRAGMA foreign_key_check');
 
       expect(tables.map(row => row.name)).to.include.members([
@@ -45,7 +50,26 @@ describe('runtime settings migration', function () {
         't_root_folder'
       ]);
       expect(pageSize).to.deep.equal([{ value: '12' }]);
+      expect(seededSettings).to.deep.equal(
+        Object.entries(runtimeDefaults)
+          .filter(([key]) => key !== 'rootFolders')
+          .map(([key, value]) => ({ key, value: JSON.stringify(value) }))
+          .sort((left, right) => left.key.localeCompare(right.key))
+      );
       expect(foreignKeyErrors).to.deep.equal([]);
+
+      await exec(database, `
+        INSERT INTO t_app_setting (key, value) VALUES
+          ('checkUpdate', 'true'),
+          ('offloadMedia', 'true'),
+          ('httpsEnabled', 'true');
+      `);
+      await exec(database, sql);
+      const removedSettings = await all(
+        database,
+        "SELECT key FROM t_app_setting WHERE key IN ('checkUpdate', 'offloadMedia', 'httpsEnabled')"
+      );
+      expect(removedSettings).to.deep.equal([]);
     } finally {
       await new Promise(resolve => database.close(resolve));
     }
