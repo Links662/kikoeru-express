@@ -148,10 +148,11 @@ const toTree = (tracks, workDir, rootFolder) => {
 /**
  * 返回一个成员为指定根文件夹下所有包含 RJ 号的音声文件夹对象的数组，
  * 音声文件夹对象 { relativePath: '相对路径', rootFolderName: '根文件夹别名', id: '音声ID' }
- * @param {Object} rootFolder 根文件夹对象 { name: '别名', path: '绝对路径' }
+ * @param {Object} rootFolder 根文件夹对象 { name: '别名', path: '绝对路径', maxRecursionDepth: '最大递归深度' }
  */
 async function* getFolderList(rootFolder, current = '', depth = 0, callback = function addMainLog(){} ) {
   const folders = await fs.promises.readdir(path.join(rootFolder.path, current));    
+  const maxRecursionDepth = rootFolder.maxRecursionDepth || config.scannerMaxRecursionDepth || 2;
 
   for (const folder of folders) {
     const absolutePath = path.resolve(rootFolder.path, current, folder);
@@ -163,9 +164,9 @@ async function* getFolderList(rootFolder, current = '', depth = 0, callback = fu
           if (folder.match(/RJ\d+/)) {
             // Found a work folder, don't go any deeper.
             yield { absolutePath, relativePath, rootFolderName: rootFolder.name, id: parseInt(folder.match(/RJ(\d+)/)[1]) };
-          } else if (depth + 1 < config.scannerMaxRecursionDepth) {
+          } else if (depth + 1 < maxRecursionDepth) {
             // 若文件夹名称中不含有RJ号，就进入该文件夹内部
-            yield* getFolderList(rootFolder, relativePath, depth + 1);
+            yield* getFolderList(rootFolder, relativePath, depth + 1, callback);
           }
         }
     } catch (err) {

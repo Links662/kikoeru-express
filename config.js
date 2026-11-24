@@ -8,6 +8,7 @@ const pjson = require('./package.json');
 
 // Before the following version, there is no version tracking
 const versionWithoutVerTracking = '0.4.1';
+const DEFAULT_MAX_RECURSION_DEPTH = 2;
 
 let config = {};
 
@@ -29,7 +30,8 @@ const defaultConfig = {
   rootFolders: [
     // {
     //   name: '',
-    //   path: ''
+    //   path: '',
+    //   maxRecursionDepth: 2
     // }
   ],
   coverFolderDir: path.join(__dirname, 'covers'),
@@ -40,7 +42,6 @@ const defaultConfig = {
   auth: process.env.NODE_ENV === 'production' ? true : false,
   jwtsecret: crypto.randomBytes(32).toString('hex'),
   expiresIn: 2592000,
-  scannerMaxRecursionDepth: 2,
   pageSize: 12,
   listPageSize: 50,
   tagLanguage: 'zh-CN',
@@ -71,6 +72,20 @@ const defaultConfig = {
   offloadDownloadPath: '/media/download/'      // /media/download/RJ123456/subdirs/track.mp3
 };
 
+const normalizeMaxRecursionDepth = (value, fallback = DEFAULT_MAX_RECURSION_DEPTH) => {
+  const depth = Number(value);
+  return Number.isInteger(depth) && depth >= 1 ? depth : fallback;
+};
+
+const normalizeRootFolders = (rootFolders, fallbackDepth = DEFAULT_MAX_RECURSION_DEPTH) => {
+  if (!Array.isArray(rootFolders)) return [];
+
+  return rootFolders.map(rootFolder => ({
+    ...rootFolder,
+    maxRecursionDepth: normalizeMaxRecursionDepth(rootFolder.maxRecursionDepth, fallbackDepth)
+  }));
+};
+
 const initConfig = (writeConfigToFile = !process.env.FREEZE_CONFIG_FILE) => {
   config = Object.assign(config, defaultConfig);
   if (writeConfigToFile) {
@@ -88,6 +103,9 @@ const setConfig = (newConfig, writeConfigToFile = !process.env.FREEZE_CONFIG_FIL
 
   // Merge config
   config = Object.assign(config, newConfig);
+  const legacyMaxRecursionDepth = normalizeMaxRecursionDepth(config.scannerMaxRecursionDepth);
+  config.rootFolders = normalizeRootFolders(config.rootFolders, legacyMaxRecursionDepth);
+  delete config.scannerMaxRecursionDepth;
   if (writeConfigToFile) {
     fs.writeFileSync(configPath, JSON.stringify(config, null, "\t"));
   }
@@ -104,6 +122,10 @@ const readConfig = () => {
       }
     }
   }
+
+  const legacyMaxRecursionDepth = normalizeMaxRecursionDepth(config.scannerMaxRecursionDepth);
+  config.rootFolders = normalizeRootFolders(config.rootFolders, legacyMaxRecursionDepth);
+  delete config.scannerMaxRecursionDepth;
 
   // md5secret 是旧密码哈希（md5(密码 + md5secret)）用的，现在密码走 scrypt，
   // 这个键已经没人读：老 config.json 里残留的值直接丢掉，下次保存设置时会从文件里消失
