@@ -78,7 +78,7 @@ router.get('/getByWorkIdIndex',
 
       res.send(history);
     } catch (err) {
-      console.log(err);
+      console.error(err);
       res.status(500).send({ error: '服务器错误' });
     }
   }
@@ -96,7 +96,7 @@ router.get('/recent',
 
       res.send(history);
     } catch (err) {
-      console.log(err);
+      console.error(err);
       res.status(500).send({ error: '服务器错误' });
     }
   }
@@ -111,7 +111,7 @@ router.delete('/recent',
       await db.deleteHistoryByUserName(username);
       res.send({ message: '历史记录已清空' });
     } catch (err) {
-      console.log(err);
+      console.error(err);
       res.status(500).send({ error: '服务器错误' });
     }
   }

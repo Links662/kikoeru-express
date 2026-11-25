@@ -374,7 +374,6 @@ const scrapeDynamicWorkMetadataFromDLsite = id => new Promise((resolve, reject) 
       if (Array.isArray(data.rank) && data.rank.length) {
         work.rank = data.rank; // 成绩
       }
-      console.log(`[${rjLabel}] 成功从 DLSite 抓取Dynamic元数据...`);
       resolve(work);
     })
     .catch((error) => {

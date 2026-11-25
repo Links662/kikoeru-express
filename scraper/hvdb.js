@@ -15,7 +15,6 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
   console.log(`[${rjLabel}] 从 HVDB 抓取元数据...`);
   axios.retryGet(url, { retry: {} })
     .then(response => {
-      console.log('res HVDB')
       return response.data
     })
     .then((data) => {
@@ -80,7 +79,6 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
       if (work.tags.length === 0 && work.vas.length === 0) {
         reject(new Error('Couldn\'t parse data from HVDB work page.'));
       } else {
-        console.log(`[${rjLabel}] 成功从 HVDB 抓取元数据...`);
         resolve(work);
       }
     })
@@ -90,9 +88,7 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
         reject(new Error(`Couldn't request work page HTML (${url}), received: ${error.response.status}.`));
       } else if (error.request) {
         reject(error);
-        console.log(error.request);
       } else {
-        console.log('Error', error.message);
         reject(error);
       }
     });

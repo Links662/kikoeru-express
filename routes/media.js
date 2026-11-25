@@ -98,10 +98,8 @@ router.get('/check-lrc/:id/:index',
               if (!fs.existsSync(lrcFileLoc)) {
                 res.send({result: false, message:'不存在歌词文件', hash: ''});
               } else {
-                console.log('找到歌词文件');             
                 const lrcFileName = track.title.substr(0, track.title.lastIndexOf(".")) + ".lrc";
                 const subtitleToFind = track.subtitle;
-                console.log('歌词文件名： ', lrcFileName);
                 // 文件名、子目录名相同
                 tracks.forEach(trackItem => {
                   if (trackItem.title === lrcFileName && subtitleToFind === trackItem.subtitle) {
