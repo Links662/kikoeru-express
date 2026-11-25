@@ -29,7 +29,8 @@ const snapshot = {
   failedTasks: [],
   mainLogs: [],
   results: [],
-  message: null
+  message: null,
+  messageLevel: null
 };
 
 const listeners = [];
@@ -63,6 +64,7 @@ const applyEvent = (event, payload) => {
       break;
     case 'SCAN_FINISHED':
       snapshot.message = payload.message;
+      snapshot.messageLevel = payload.level || 'info';
       snapshot.status = 'finished';
       break;
     case 'SCAN_ERROR':
@@ -87,6 +89,7 @@ const resetSnapshot = () => {
   snapshot.mainLogs = [];
   snapshot.results = [];
   snapshot.message = null;
+  snapshot.messageLevel = null;
 };
 
 /**
@@ -153,7 +156,8 @@ const getSnapshot = () => ({
   failedTasks: snapshot.failedTasks,
   mainLogs: snapshot.mainLogs,
   results: snapshot.results,
-  message: snapshot.message
+  message: snapshot.message,
+  messageLevel: snapshot.messageLevel
 });
 
 module.exports = {

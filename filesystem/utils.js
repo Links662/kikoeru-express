@@ -134,7 +134,7 @@ const toTree = (tracks) => {
  * 音声文件夹对象 { relativePath: '相对路径', rootFolderId: '根目录ID', id: '音声ID' }
  * @param {Object} rootFolder 根文件夹对象 { id: '根目录ID', name: '别名', path: '绝对路径', maxRecursionDepth: '最大递归深度' }
  */
-async function* getFolderList(rootFolder, current = '', depth = 0, callback = function addMainLog(){} ) {
+async function* getFolderList(rootFolder, current = '', depth = 0, callback = function () {} ) {
   const folders = await fs.promises.readdir(path.join(rootFolder.path, current));    
   const maxRecursionDepth = rootFolder.maxRecursionDepth || 2;
 
@@ -161,10 +161,9 @@ async function* getFolderList(rootFolder, current = '', depth = 0, callback = fu
     } catch (err) {
       if (err.code === 'EPERM') {
         if (err.path && !err.path.endsWith('System Volume Information')) {
-          console.log(' ! 无法访问', err.path)
-          callback({
-            level: 'info',
-            message: ` ! 无法访问 ${err.path}`
+          callback(`无法访问 ${err.path}`, {
+            level: 'warn',
+            type: 'detail'
           })
         }
       } else {

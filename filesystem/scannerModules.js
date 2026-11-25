@@ -21,6 +21,7 @@ const {
   hasLrc
 } = require('./utils');
 const { formatRJLabel } = require('../utils/workId');
+const { createLog, formatConsoleLog } = require('./scannerLog');
 const { config, findRootFolder } = require('../config');
 
 // 只有在子进程中 process 对象才有 send() 方法
@@ -30,6 +31,15 @@ const tasks = [];
 const failedTasks = [];
 const mainLogs = [];
 const results = [];
+
+const writeConsoleLog = (log) => {
+  const method = log.level === 'error'
+    ? 'error'
+    : log.level === 'warn'
+      ? 'warn'
+      : 'log';
+  console[method](formatConsoleLog(log));
+};
 
 const getTask = (workId) => tasks.find(task => task.workId === Number(workId));
 
@@ -79,11 +89,28 @@ const addLogForTask = (workId, log) => {
   return true;
 };
 
-const addResult = (workId, result, count) => {
+const RESULT_LOG_META = Object.freeze({
+  added: { level: 'success', message: '添加成功' },
+  repaired: { level: 'success', message: '封面修复成功' },
+  upgraded: { level: 'success', message: '封面升级成功' },
+  updated: { level: 'success', message: '更新成功' },
+  failed: { level: 'error', message: '处理失败' }
+});
+
+const addResult = (workId, result, count, message = null) => {
+  const meta = RESULT_LOG_META[result] || RESULT_LOG_META.failed;
+  const log = createLog(message || `[${formatRJLabel(workId)}] ${meta.message}.`, {
+    level: meta.level,
+    type: 'item',
+    workId
+  });
+
+  writeConsoleLog(log);
   results.push({
     workId: Number(workId),
     result,
-    count
+    count,
+    log
   });
   process.send({
     event: 'SCAN_RESULTS',
@@ -103,22 +130,19 @@ const addMainLog = (log) => {
   });
 };
 
-const emitMainLog = (message, level = 'info', truncate = 0) => {
-  console.log(message);
-  addMainLog({
-    level: level,
-    message: message.substring(truncate)
-  });
+const emitMainLog = (message, options = {}) => {
+  const log = createLog(message, options);
+  writeConsoleLog(log);
+  addMainLog(log);
+  return log;
 };
 
-const emitTaskLog = (message, workId, level = 'info', truncate = 0) => {
-  console.log(message);
-  const log = {
-    level: level,
-    message: message.substring(truncate)
-  };
+const emitTaskLog = (message, workId, options = {}) => {
+  const log = createLog(message, { ...options, workId });
+  writeConsoleLog(log);
 
   if (!addLogForTask(workId, log)) addMainLog(log);
+  return log;
 }
 
 process.on('message', (m) => {
@@ -133,7 +157,7 @@ process.on('message', (m) => {
       }
     });
   } else if (m.exit) {
-    emitMainLog('终止扫描进程.', 'error', 0);
+    emitMainLog('终止扫描进程.', { level: 'error', type: 'summary' });
     process.exit(1);
   }
 });
@@ -174,13 +198,12 @@ const uniqueArr = (arr) => {
  */
 const getMetadata = (id, rootFolderId, dir, tagLanguage) => {
   const rjLabel = formatRJLabel(id);
-  emitTaskLog(`[${rjLabel}] 从 DLSite 抓取元数据...`, id);
+  emitTaskLog(`[${rjLabel}] 从 DLSite 抓取元数据...`, id, { type: 'progress' });
   
   return scrapeWorkMetadataFromDLsite(id, tagLanguage)
     .then((metadata) => {
       const rootFolder = findRootFolder({ root_folder_id: rootFolderId });
       const absolutePath = path.join(rootFolder.path, dir);
-      console.log(absolutePath)
       return getTrackList(id, absolutePath)
       .then((tracks) => {
         metadata.subtitle = hasLrc(tracks)
@@ -188,25 +211,37 @@ const getMetadata = (id, rootFolderId, dir, tagLanguage) => {
       })
     })
     .then((metadata) => {
-      emitTaskLog(`[${rjLabel}] 元数据抓取成功，准备添加到数据库...`, id);
+      emitTaskLog(`[${rjLabel}] 元数据抓取成功，准备添加到数据库...`, id, {
+        level: 'success',
+        type: 'item'
+      });
       
       metadata.rootFolderId = rootFolderId;
       metadata.dir = dir;
 
       return db.insertWorkMetadata(metadata)
         .then(() => {
-          emitTaskLog(`[${rjLabel}] 元数据成功添加到数据库.`, id);
+          emitTaskLog(`[${rjLabel}] 元数据成功添加到数据库.`, id, {
+            level: 'success',
+            type: 'item'
+          });
           
           return 'added';
         })
         .catch((err) => {
-          emitTaskLog(`[${rjLabel}] 在插入元数据过程中出错: ${err.message}`, id, 'error');
+          emitTaskLog(`[${rjLabel}] 在插入元数据过程中出错: ${err.message}`, id, {
+            level: 'error',
+            type: 'item'
+          });
           
           return 'failed';
         });
     })
     .catch((err) => {
-      emitTaskLog(`[${rjLabel}] 在抓取元数据过程中出错: ${err.message}`, id, 'error');
+      emitTaskLog(`[${rjLabel}] 在抓取元数据过程中出错: ${err.message}`, id, {
+        level: 'error',
+        type: 'item'
+      });
       
       return 'failed';
     });
@@ -225,7 +260,7 @@ const getCoverImage = async (id, types) => {
   const id2 = (id % 1000 === 0) ? id : parseInt(id / 1000, 10) * 1000 + 1000;
   const rjLabel2 = formatRJLabel(id2);
 
-  emitTaskLog(`[${rjLabel}] 从 DLsite 下载封面...`, id);
+  emitTaskLog(`[${rjLabel}] 从 DLsite 下载封面...`, id, { type: 'progress' });
 
   const succeeded = [];
   const failed = [];
@@ -241,13 +276,19 @@ const getCoverImage = async (id, types) => {
       const imageRes = await axios.retryGet(url, { responseType: "stream", retry: {} });
       await saveCoverImageToDisk(imageRes.data, id, type);
 
-      emitTaskLog(`[${rjLabel}] 封面 ${rjLabel}_img_${type}.jpg 下载成功.`, id);
+      emitTaskLog(`[${rjLabel}] 封面 ${rjLabel}_img_${type}.jpg 下载成功.`, id, {
+        level: 'success',
+        type: 'detail'
+      });
       succeeded.push(type);
     } catch (err) {
       // 非 2xx 时响应体没有被消费，主动释放，避免批量扫描时一直占着 socket
       if (err.response && err.response.data && err.response.data.destroy) err.response.data.destroy();
 
-      emitTaskLog(`[${rjLabel}] 在下载封面 ${rjLabel}_img_${type}.jpg 过程中出错: ${err.message}`, id, 'error');
+      emitTaskLog(`[${rjLabel}] 在下载封面 ${rjLabel}_img_${type}.jpg 过程中出错: ${err.message}`, id, {
+        level: 'error',
+        type: 'detail'
+      });
       failed.push(type);
     }
   }
@@ -293,11 +334,17 @@ const generateCoverFromMain = async (id, type) => {
     // 记下这张图是本地生成的，以后才有机会换成 DLsite 的原图
     await markGeneratedCover(id, type);
 
-    emitTaskLog(`[${formatRJLabel(id)}] 已由 main 生成 ${type} 缩略图.`, id);
+    emitTaskLog(`[${formatRJLabel(id)}] 已由 main 生成 ${type} 缩略图.`, id, {
+      level: 'success',
+      type: 'detail'
+    });
     return true;
   } catch (err) {
     await fs.promises.unlink(tempPath).catch(() => {});
-    emitTaskLog(`[${formatRJLabel(id)}] 由 main 生成 ${type} 缩略图失败: ${err.message}`, id, 'error');
+    emitTaskLog(`[${formatRJLabel(id)}] 由 main 生成 ${type} 缩略图失败: ${err.message}`, id, {
+      level: 'error',
+      type: 'detail'
+    });
     return false;
   }
 };
@@ -318,7 +365,10 @@ const markGeneratedCover = async (id, type) => {
     });
   } catch (err) {
     // 标记只是「以后能升级」的依据，写不上不该让整张图白生成
-    emitTaskLog(`[${formatRJLabel(id)}] 无法写入 ${type} 的来源标记（将不会自动升级）: ${err.message}`, id, 'error');
+    emitTaskLog(`[${formatRJLabel(id)}] 无法写入 ${type} 的来源标记（将不会自动升级）: ${err.message}`, id, {
+      level: 'error',
+      type: 'detail'
+    });
   }
 };
 
@@ -331,7 +381,10 @@ const markCoverUpgradeAttempt = async (id, type, origin) => {
       tried: Date.now()
     }));
   } catch (err) {
-    emitTaskLog(`[${formatRJLabel(id)}] 无法记录 ${type} 的升级尝试: ${err.message}`, id, 'error');
+    emitTaskLog(`[${formatRJLabel(id)}] 无法记录 ${type} 的升级尝试: ${err.message}`, id, {
+      level: 'error',
+      type: 'detail'
+    });
   }
 };
 
@@ -465,12 +518,16 @@ const fetchCover = async (id) => {
  */
 const repairCover = async (id, missingTypes) => {
   if (missingTypes.includes('main')) {
-    emitTaskLog(`[${formatRJLabel(id)}] 封面图片缺失或损坏，重新下载: ${missingTypes.join(', ')}`, id);
+    emitTaskLog(`[${formatRJLabel(id)}] 封面图片缺失或损坏，重新下载: ${missingTypes.join(', ')}`, id, {
+      type: 'progress'
+    });
     await getCoverImage(id, missingTypes);
 
     if (!isUsableCoverFile(coverFilePath(id, 'main'))) return 'failed';
   } else if (missingTypes.includes('sam')) {
-    emitTaskLog(`[${formatRJLabel(id)}] sam 缩略图缺失，从 DLsite 重新获取...`, id);
+    emitTaskLog(`[${formatRJLabel(id)}] sam 缩略图缺失，从 DLsite 重新获取...`, id, {
+      type: 'progress'
+    });
     await getCoverImage(id, ['sam']);
   }
 
@@ -492,7 +549,10 @@ const maintainCovers = async (id, options = {}) => {
   if (!plan.missing.length && !plan.stale.length && !plan.upgradable.length) return 'skipped';
 
   if (options.dryRun) {
-    emitMainLog(`[${formatRJLabel(id)}] 待处理: ${describeCoverPlan(plan)}`, 'info', 0);
+    emitMainLog(`[${formatRJLabel(id)}] 待处理: ${describeCoverPlan(plan)}`, {
+      type: 'item',
+      workId: id
+    });
     return 'pending';
   }
 
@@ -507,7 +567,9 @@ const maintainCovers = async (id, options = {}) => {
   }
 
   if (plan.stale.length) {
-    emitTaskLog(`[${formatRJLabel(id)}] main 已更新，重新生成缩略图: ${plan.stale.join(', ')}`, id);
+    emitTaskLog(`[${formatRJLabel(id)}] main 已更新，重新生成缩略图: ${plan.stale.join(', ')}`, id, {
+      type: 'progress'
+    });
     for (const type of plan.stale) {
       await generateCoverFromMain(id, type);
     }
@@ -519,7 +581,9 @@ const maintainCovers = async (id, options = {}) => {
 
   if (plan.upgradable.length) {
     const reason = options.refreshAllCovers ? '按全量重取模式' : '本地生成的封面到了升级时间';
-    emitTaskLog(`[${formatRJLabel(id)}] ${reason}，尝试从 DLsite 取原图: ${plan.upgradable.join(', ')}`, id);
+    emitTaskLog(`[${formatRJLabel(id)}] ${reason}，尝试从 DLsite 取原图: ${plan.upgradable.join(', ')}`, id, {
+      type: 'progress'
+    });
 
     ({ upgraded, failed } = await upgradeCovers(id, plan.upgradable));
   }
@@ -552,11 +616,9 @@ const processFolder = async (folder, options = {}) => {
   // 只维护封面时不收录新作品
   if (options.coversOnly) return 'skipped';
   else {
-    console.log(` * 发现新文件夹: "${folder.absolutePath}"`);
     addTask(folder.id);
-    addLogForTask(folder.id, {
-      level: 'info',
-      message: `发现新文件夹: "${folder.absolutePath}"`
+    emitTaskLog(`发现新文件夹: "${folder.absolutePath}"`, folder.id, {
+      type: 'progress'
     });
 
     const result = await getMetadata(
@@ -583,7 +645,10 @@ const performCleanup = async (folderCount, protectedWorkIds = new Set()) => {
   await db.knex.transaction(async trx => {
     const works = await trx('t_work').select('id', 'root_folder_id', 'dir');
     if (works.length > 0 && folderCount === 0) {
-      emitMainLog(' ! 本次未扫描到任何作品目录，为避免误删已停止清理.', 'error', 0);
+      emitMainLog('本次未扫描到任何作品目录，为避免误删已停止清理.', {
+        level: 'error',
+        type: 'progress'
+      });
       return;
     }
 
@@ -610,7 +675,11 @@ const performCleanup = async (folderCount, protectedWorkIds = new Set()) => {
       await deleteCoverImageFromDisk(workId);
     } catch (err) {
       if (err && err.code !== 'ENOENT') {
-        emitMainLog(`[${rjLabel}] 在删除封面过程中出错: ${err.message}`, 'error', 0);
+        emitMainLog(`[${rjLabel}] 在删除封面过程中出错: ${err.message}`, {
+          level: 'error',
+          type: 'detail',
+          workId
+        });
       }
     }
   }
@@ -628,20 +697,24 @@ const prepareEnvironment = async () => {
 };
 
 const runCleanupStep = async (folderCount, protectedWorkIds) => {
-  emitMainLog('清理本地不再存在的音声的数据与封面图片...', 'info', 0);
+  emitMainLog('清理本地不再存在的音声的数据与封面图片...', { type: 'progress' });
   const removedCount = await performCleanup(folderCount, protectedWorkIds);
-  emitMainLog(`清理完成，共清理 ${removedCount} 个失效作品.`, 'info', 0);
+  emitMainLog(`清理完成，共清理 ${removedCount} 个失效作品.`, {
+    level: 'success',
+    type: 'item'
+  });
   return removedCount;
 };
 
 const collectAllFolders = async () => {
+  emitMainLog('收集音声文件夹', { type: 'phase' });
   let list = [];
   for (const rootFolder of config.rootFolders) {
-    for await (const folder of getFolderList(rootFolder, '', 0, addMainLog)) {
+    for await (const folder of getFolderList(rootFolder, '', 0, emitMainLog)) {
       list.push(folder);
     }
   }
-  emitMainLog(` * 共找到 ${list.length} 个音声文件夹.`, 'info', 3);
+  emitMainLog(`共找到 ${list.length} 个音声文件夹.`, { type: 'progress' });
   return list;
 };
 
@@ -650,9 +723,16 @@ const handleDeduplication = (folderList) => {
   const duplicateNum = folderList.length - uniqueList.length;
 
   if (duplicateNum > 0) {
-    emitMainLog(` ! 发现 ${duplicateNum} 个重复的音声文件夹.`, 'info', 3);
+    emitMainLog(`发现 ${duplicateNum} 个重复的音声文件夹.`, {
+      level: 'warn',
+      type: 'progress'
+    });
     Object.keys(duplicate).forEach(key => {
-      emitMainLog(` -> [${formatRJLabel(key)}] 存在多个文件夹.`, 'info', 4);
+      emitMainLog(`[${formatRJLabel(key)}] 存在多个文件夹.`, {
+        level: 'warn',
+        type: 'item',
+        workId: key
+      });
     });
   }
   return { uniqueFolderList: uniqueList, duplicateNum };
@@ -730,15 +810,13 @@ const remapMovedWorks = async (folderList) => {
     const oldRoot = currentRootFolder ? currentRootFolder.name : `#${work.root_folder_id}`;
     emitMainLog(
       `[${formatRJLabel(work.id)}] 已重映射路径: ${oldRoot}:${work.dir} -> ${targetRootFolder.name}:${target.relativePath}`,
-      'info',
-      3
+      { type: 'detail', workId: work.id }
     );
   }
   for (const { work, candidates } of ambiguous) {
     emitMainLog(
-      ` ! [${formatRJLabel(work.id)}] 原路径不存在，但发现 ${candidates.length} 个候选目录，保留原记录等待人工处理.`,
-      'error',
-      3
+      `[${formatRJLabel(work.id)}] 原路径不存在，但发现 ${candidates.length} 个候选目录，保留原记录等待人工处理.`,
+      { level: 'warn', type: 'item', workId: work.id }
     );
   }
 
@@ -758,7 +836,10 @@ const processSingleFolder = async (folder, counts, options = {}, limiter) => {
     result = await limiter.call(processFolder, folder, options);
   } catch (err) {
     // 单个作品出错不能让整场扫描挂掉，记成失败继续跑
-    emitTaskLog(`[${rjLabel}] 处理出错: ${err.message}`, workId, 'error');
+    emitTaskLog(`[${rjLabel}] 处理出错: ${err.message}`, workId, {
+      level: 'error',
+      type: 'item'
+    });
     result = 'failed';
   }
 
@@ -771,16 +852,6 @@ const processSingleFolder = async (folder, counts, options = {}, limiter) => {
 
   if (result === 'skipped' || result === 'pending') return;
 
-  const isSuccess = result !== 'failed';
-  const statusText = {
-    added: '添加成功',
-    repaired: '封面修复成功',
-    upgraded: '封面升级成功',
-    failed: '处理失败'
-  }[result];
-
-  console[isSuccess ? 'log' : 'error'](`[${rjLabel}] ${statusText}! ${result.toUpperCase()}: ${counts[result]}`);
-
   addResult(workId, result, counts[result]);
 };
 
@@ -788,9 +859,10 @@ const finalizeScan = async (counts, options = {}) => {
   const message = options.dryRun
     ? `检查完成（封面未做修改）: 需要处理 ${counts.pending} 个作品.`
     : `扫描完成: 重映射 ${counts.remapped} 个，新增 ${counts.added} 个，修复封面 ${counts.repaired} 个，升级封面 ${counts.upgraded} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`;
+  const level = counts.failed ? 'warn' : 'success';
 
-  console.log(` * ${message}`);
-  process.send({ event: 'SCAN_FINISHED', payload: { message } });
+  writeConsoleLog(createLog(message, { level, type: 'summary' }));
+  process.send({ event: 'SCAN_FINISHED', payload: { message, level } });
 
   await db.knex.destroy();
   process.exit(0);
@@ -815,13 +887,14 @@ const performScan = async (options = {}) => {
     counts.skipped += duplicateNum;
 
     // 3. 路径重映射与数据清理阶段
+    emitMainLog('同步路径与本地数据', { type: 'phase' });
     if (options.coversOnly) {
       // 封面维护是定点操作，不删数据也不动数据库
-      emitMainLog(' * 只维护封面：不收录新作品，也不清理数据库.', 'info', 3);
+      emitMainLog('只维护封面：不收录新作品，也不清理数据库.', { type: 'progress' });
     } else if (options.dryRun) {
-      emitMainLog(' * 试运行：不重映射路径，也不清理数据库.', 'info', 3);
+      emitMainLog('试运行：不重映射路径，也不清理数据库.', { type: 'progress' });
     } else if (config.skipCleanup) {
-      emitMainLog(' * 根据设置跳过路径重映射与清理.', 'info', 3);
+      emitMainLog('根据设置跳过路径重映射与清理.', { type: 'progress' });
     } else {
       const { remappedCount, protectedWorkIds } = await remapMovedWorks(folderList);
       counts.remapped += remappedCount;
@@ -829,6 +902,7 @@ const performScan = async (options = {}) => {
     }
 
     // 4. 核心处理阶段 (并行执行)
+    emitMainLog('处理音声作品', { type: 'phase' });
     await Promise.all(
       uniqueFolderList.map(folder => processSingleFolder(folder, counts, options, limiter))
     );
@@ -837,7 +911,10 @@ const performScan = async (options = {}) => {
     await finalizeScan(counts, options);
 
   } catch (err) {
-    emitMainLog(` ! 扫描过程中出错: ${err.message}`, 'error', 3);
+    emitMainLog(`扫描过程中出错: ${err.message}`, {
+      level: 'error',
+      type: 'summary'
+    });
     await db.knex.destroy().catch(() => {});
     process.exit(1);
   }
@@ -855,16 +932,25 @@ const updateMetadata = (id, options = {}) => {
   addTask(id);
   return scrapeProcessor()
     .then((metadata) => {
-      emitTaskLog(`[${rjLabel}] 元数据抓取成功，准备更新元数据...`, id);
+      emitTaskLog(`[${rjLabel}] 元数据抓取成功，准备更新元数据...`, id, {
+        level: 'success',
+        type: 'item'
+      });
       metadata.id = id;
       return db.updateWorkMetadata(metadata, options)
         .then(() => {
-          emitTaskLog(`[${rjLabel}] 元数据更新成功`, id);
+          emitTaskLog(`[${rjLabel}] 元数据更新成功`, id, {
+            level: 'success',
+            type: 'item'
+          });
           return 'updated';
         });
     })
     .catch((err) => {
-      emitTaskLog(`[${rjLabel}] 在抓取元数据过程中出错: ${err}`, id, 'error');
+      emitTaskLog(`[${rjLabel}] 在抓取元数据过程中出错: ${err}`, id, {
+        level: 'error',
+        type: 'item'
+      });
       return 'failed';
     });
 };
@@ -875,8 +961,12 @@ const scanSubtitleForWork = async (work, counts) => {
 
   if (!rootFolder) {
     counts.failed += 1;
-      emitMainLog(`[${rjLabel}] 找不到根目录 #${work.root_folder_id}，保留原中文字幕状态.`, 'error', 0);
-    addResult(work.id, 'failed', counts.failed);
+    addResult(
+      work.id,
+      'failed',
+      counts.failed,
+      `[${rjLabel}] 找不到根目录 #${work.root_folder_id}，保留原中文字幕状态.`
+    );
     return;
   }
 
@@ -891,11 +981,18 @@ const scanSubtitleForWork = async (work, counts) => {
 
     await db.updateWorkSubtitle(work.id, subtitle);
     counts.updated += 1;
-    console.log(`[${rjLabel}] 中文字幕状态已更新为 ${subtitle ? '中文字幕' : '无中文字幕'}.`);
+    writeConsoleLog(createLog(
+      `[${rjLabel}] 中文字幕状态已更新为 ${subtitle ? '中文字幕' : '无中文字幕'}.`,
+      { level: 'success', type: 'item', workId: work.id }
+    ));
   } catch (err) {
     counts.failed += 1;
-    emitMainLog(`[${rjLabel}] 扫描中文字幕失败: ${err.message}`, 'error', 0);
-    addResult(work.id, 'failed', counts.failed);
+    addResult(
+      work.id,
+      'failed',
+      counts.failed,
+      `[${rjLabel}] 扫描中文字幕失败: ${err.message}`
+    );
   }
 };
 
@@ -908,15 +1005,18 @@ const performSubtitleScan = async () => {
     failed: 0
   };
 
-  emitMainLog(` * 共 ${works.length} 个作品，开始扫描中文字幕...`, 'info', 3);
+  emitMainLog('扫描中文字幕', { type: 'phase' });
+  emitMainLog(`共 ${works.length} 个作品，开始扫描中文字幕...`, { type: 'progress' });
   await Promise.all(works.map(work => limiter.call(scanSubtitleForWork, work, counts)));
 
   const message = `中文字幕扫描完成: 更新 ${counts.updated} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`;
-  console.log(` * ${message}`);
+  const level = counts.failed ? 'warn' : 'success';
+  writeConsoleLog(createLog(message, { level, type: 'summary' }));
   process.send({
     event: 'SCAN_FINISHED',
     payload: {
-      message
+      message,
+      level
     }
   });
 
@@ -929,14 +1029,17 @@ const performUpdate = async (options = null) => {
   const baseQuery = db.knex('t_work').select('id');
   const processor = (id) => limiter.call(updateMetadata, id, options);
 
+  emitMainLog('刷新作品元数据', { type: 'phase' });
   const counts = await refreshWorks(baseQuery, 'id', processor);
 
   const message = `扫描完成: 更新 ${counts.updated} 个，失败 ${counts.failed} 个.`;
-  console.log(` * ${message}`);
+  const level = counts.failed ? 'warn' : 'success';
+  writeConsoleLog(createLog(message, { level, type: 'summary' }));
   process.send({
     event: 'SCAN_FINISHED',
     payload: {
-      message: message
+      message,
+      level
     }
   });
   db.knex.destroy();
@@ -945,7 +1048,7 @@ const performUpdate = async (options = null) => {
 
 const refreshWorks = async (query, idColumnName, processor) => {
   return query.then(async (works) => {
-    emitMainLog(` * 共 ${works.length} 个音声. 开始刷新`, 'info', 3);
+    emitMainLog(`共 ${works.length} 个音声，开始刷新.`, { type: 'progress' });
 
     const counts = {
       updated: 0,
@@ -968,7 +1071,10 @@ const refreshWorks = async (query, idColumnName, processor) => {
       })
     });
     await Promise.all(promises);
-    emitMainLog(` * 完成元数据更新 ${counts.updated} 个，失败 ${counts.failed} 个.`, 'info', 3);
+    emitMainLog(`完成元数据更新 ${counts.updated} 个，失败 ${counts.failed} 个.`, {
+      level: counts.failed ? 'warn' : 'success',
+      type: 'summary'
+    });
 
     return counts;
   });
