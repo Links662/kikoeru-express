@@ -79,7 +79,7 @@ describe('work filters', function () {
       { id: 1, title: 'Alpha sleep', circle_id: 1, nsfw: false, subtitle: false },
       { id: 2, title: 'Beta asmr', circle_id: 1, nsfw: false, subtitle: true },
       { id: 3, title: 'Gamma alice', circle_id: 2, nsfw: true, subtitle: true },
-      { id: 4, title: 'Delta sleep', circle_id: 2, nsfw: true, subtitle: false }
+      { id: 4, title: 'Delta sleep 2', circle_id: 2, nsfw: true, subtitle: false }
     ]);
     await knex('r_tag_work').insert([
       { tag_id: 1, work_id: 1 },
@@ -185,6 +185,35 @@ describe('work filters', function () {
 
   it('matches an RJ number exactly', async function () {
     expect(await getConditionIds({ keyword: 'RJ000003' })).to.deep.equal([3]);
+    expect(await getConditionIds({ keyword: 'rj000003' })).to.deep.equal([3]);
+    expect(await getConditionIds({ keyword: '000003' })).to.deep.equal([3]);
+  });
+
+  it('fuzzy searches 4-5 and 7 digit RJ fragments', async function () {
+    await knex('staticMetadata').insert([
+      { id: 1731224, title: 'Fuzzy RJ target', circle_id: 1, nsfw: false, subtitle: false },
+      { id: 11731224, title: 'Another fuzzy RJ target', circle_id: 1, nsfw: false, subtitle: false },
+      { id: 300650, title: 'Legacy RJ target', circle_id: 1, nsfw: false, subtitle: false },
+      { id: 500, title: 'Episode 1731', circle_id: 1, nsfw: false, subtitle: false }
+    ]);
+
+    expect(await getConditionIds({ keyword: '1731' })).to.deep.equal([1731224, 11731224]);
+    expect(await getConditionIds({ keyword: '0173' })).to.deep.equal([1731224]);
+    expect(await getConditionIds({ keyword: 'RJ0173' })).to.deep.equal([1731224]);
+    expect(await getConditionIds({ keyword: 'RJ1731' })).to.deep.equal([]);
+    expect(await getConditionIds({ keyword: 'RJ3122' })).to.deep.equal([]);
+    expect(await getConditionIds({ keyword: '1731224' })).to.deep.equal([1731224, 11731224]);
+    expect(await getConditionIds({ keyword: '3006' })).to.deep.equal([300650]);
+    expect(await getConditionIds({ keyword: '01731224' })).to.deep.equal([1731224]);
+    expect(await getConditionIds({ keyword: 'Episode 1731' })).to.deep.equal([500]);
+  });
+
+  it('does not treat digits inside text as an RJ number', async function () {
+    expect(await getConditionIds({ keyword: 'sleep 2' })).to.deep.equal([4]);
+    expect(await getConditionIds({ keyword: '3' })).to.deep.equal([]);
+    expect(await getConditionIds({ keyword: '第2弹' })).to.deep.equal([]);
+    expect(await getConditionIds({ keyword: 'R18' })).to.deep.equal([]);
+    expect(await getConditionIds({ keyword: 'abc123' })).to.deep.equal([]);
   });
 });
 

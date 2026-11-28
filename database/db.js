@@ -324,9 +324,23 @@ const applyWorkConditions = (query, {
   const normalizedKeyword = typeof keyword === 'string' ? keyword.trim() : '';
   if (!normalizedKeyword) return query;
 
-  const workIdMatch = normalizedKeyword.match(/((R|r)(J|j))?(\d+)/);
+  // 纯数字允许命中任意位置；带 RJ 前缀时只能从完整编号开头连续命中。
+  const workIdMatch = normalizedKeyword.match(/^(rj)?(\d{1,8})$/i);
   if (workIdMatch) {
-    return query.where('staticMetadata.id', '=', workIdMatch[4]);
+    const hasRJPrefix = Boolean(workIdMatch[1]);
+    const workIdDigits = workIdMatch[2];
+    if (workIdDigits.length >= 4) {
+      return query.whereRaw(
+        `(
+          CASE
+            WHEN staticMetadata.id < 1000000
+              THEN 'RJ' || printf('%06d', staticMetadata.id)
+            ELSE 'RJ' || printf('%08d', staticMetadata.id)
+          END
+        ) LIKE ?`,
+        [hasRJPrefix ? `RJ${workIdDigits}%` : `%${workIdDigits}%`]
+      );
+    }
   }
 
   const pattern = `%${normalizedKeyword}%`;
