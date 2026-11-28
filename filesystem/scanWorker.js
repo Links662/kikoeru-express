@@ -1,9 +1,4 @@
-const { loadWorkerSettings } = require('./workerSettings')
-
-if (process.argv.length > 2) {
-  console.error('scanWorker.js accepts no command-line options; cover maintenance is available only from the administrator scanner page.');
-  process.exit(1);
-}
+const { loadWorkerSettings } = require('./workerSettings');
 
 loadWorkerSettings()
   .then(({ performScan }) => performScan())

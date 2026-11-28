@@ -104,7 +104,13 @@ const startScan = (kind = 'scan') => {
   resetSnapshot();
 
   const entry = SCANNER_ENTRY[kind] || SCANNER_ENTRY.scan;
-  scanner = child_process.fork(entry, [], { silent: false });
+  scanner = child_process.fork(entry, [], {
+    silent: false,
+    env: {
+      ...process.env,
+      KIKOERU_SCAN_WORKER: '1'
+    }
+  });
 
   scanner.on('exit', (code) => {
     scanner = null;

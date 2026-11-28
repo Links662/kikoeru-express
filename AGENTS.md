@@ -24,7 +24,7 @@ npm test
 - `npm start`：普通启动。
 - `npm test`：先执行 ESLint，再以 `NODE_ENV=test` 运行 Mocha。
 - 单个测试文件：`npx cross-env NODE_ENV=test mocha test/subtitles.js`。
-- `npm run scan` 仍指向 `filesystem/scanWorker.js`，但扫描入口不应继续扩展为带参数的外部 CLI；字幕重扫只能从管理员扫描页面触发。
+- 不提供外部扫描命令；所有扫描操作只能通过扫描子系统启动，不得直接执行 worker 或另建扫描进程。
 
 ## 目录职责
 
@@ -77,15 +77,14 @@ npm test
 - 持久字段是 `t_work.subtitle`，API 字段是 `metadata.subtitle`，对前端输出布尔值。
 - “有字幕”的定义是作品目录中存在任意 `.lrc` 文件，扩展名判断不区分大小写。
 - `.srt`、`.ass` 可以作为文本文件播放，但不算字幕状态。
-- 字幕重扫只由管理员扫描页面触发，通过 `PERFORM_SUBTITLE_SCAN` 进入 `subtitleScanWorker.js`。
-- 不要新增外部字幕扫描 CLI、公开 API、定时任务或独立调度器。
 - `filesystem/utils.js` 的 `hasLrc()` 是判定入口；`filesystem/scannerModules.js` 的 `performSubtitleScan()` 负责回写数据库。
 
 ## 扫描子系统
 
-- `SCANNER_ENTRY` 将 `scan`、`update`、`subtitles`、`covers` 映射到对应 worker。
+- 所有扫描操作都必须通过扫描子系统启动；管理页面、API、自动化调度器等触发来源最终只能调用 `scannerState.startScan()`，不得绕过单进程互斥、进度快照和事件广播。
+- `SCANNER_ENTRY` 将 `scan`、`update`、`tags`、`subtitles`、`covers` 映射到对应 worker。
 - worker 通过 `process.send()` 上报 `SCAN_TASKS`、`SCAN_FAILED_TASKS`、`SCAN_MAIN_LOGS`、`SCAN_RESULTS`、`SCAN_FINISHED` 等事件。
-- `updateWorker.js`、`subtitleScanWorker.js`、`coverScanWorker.js` 必须由服务端 fork；没有 IPC 时会主动退出。
+- 所有扫描 worker 都必须由服务端通过 `scannerState.startScan()` fork；没有 IPC 时会主动退出。
 - 不要把扫描进程状态分散到路由、Socket 或组件中。新增扫描类型时修改 `SCANNER_ENTRY`，继续复用 `scannerState.startScan()`。
 - 单个作品失败不能中断整场扫描；沿用现有计数、失败任务和日志汇总方式。
 - 封面写入使用 `.part` 临时文件、JPEG 头校验和原子重命名。不要直接覆盖正式封面。

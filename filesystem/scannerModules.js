@@ -27,9 +27,11 @@ const {
 const { formatRJLabel } = require('../utils/workId');
 const { createLog, formatConsoleLog } = require('./scannerLog');
 const { config, findRootFolder } = require('../config');
+const { assertScanSubsystemProcess } = require('./workerSettings');
 
-// 只有在子进程中 process 对象才有 send() 方法
-process.send = process.send || function () {};
+const sendScanEvent = typeof process.send === 'function'
+  ? payload => process.send(payload)
+  : () => {};
 
 const tasks = [];
 const failedTasks = [];
@@ -59,7 +61,7 @@ const removeTask = (workId) => {
   if (index === -1) return;
 
   const task = tasks.splice(index, 1)[0];
-  process.send({
+  sendScanEvent({
     event: 'SCAN_TASKS',
     payload: {
       tasks
@@ -68,7 +70,7 @@ const removeTask = (workId) => {
 
   if (task.result === 'failed') {
     failedTasks.push(task);
-    process.send({
+    sendScanEvent({
       event: 'SCAN_FAILED_TASKS',
       payload: {
         failedTasks
@@ -83,7 +85,7 @@ const addLogForTask = (workId, log) => {
   if (!task) return false;
 
   task.logs.push(log);
-  process.send({
+  sendScanEvent({
     event: 'SCAN_TASKS',
     payload: {
       tasks
@@ -117,7 +119,7 @@ const addResult = (workId, result, count, message = null) => {
     count,
     log
   });
-  process.send({
+  sendScanEvent({
     event: 'SCAN_RESULTS',
     payload: {
       results
@@ -127,7 +129,7 @@ const addResult = (workId, result, count, message = null) => {
 
 const addMainLog = (log) => {
   mainLogs.push(log);
-  process.send({
+  sendScanEvent({
     event: 'SCAN_MAIN_LOGS',
     payload: {
       mainLogs
@@ -152,7 +154,7 @@ const emitTaskLog = (message, workId, options = {}) => {
 
 process.on('message', (m) => {
   if (m.emit === 'SCAN_INIT_STATE') {
-    process.send({
+    sendScanEvent({
       event: 'SCAN_INIT_STATE',
       payload: {
         tasks,
@@ -874,7 +876,7 @@ const finalizeScan = async (counts, options = {}) => {
   const level = counts.failed ? 'warn' : 'success';
 
   writeConsoleLog(createLog(message, { level, type: 'summary' }));
-  process.send({ event: 'SCAN_FINISHED', payload: { message, level } });
+  sendScanEvent({ event: 'SCAN_FINISHED', payload: { message, level } });
 
   await db.knex.destroy();
   process.exit(0);
@@ -885,6 +887,8 @@ const finalizeScan = async (counts, options = {}) => {
  * @param {Object} options { coversOnly, refreshAllCovers, dryRun }
  */
 const performScan = async (options = {}) => {
+  assertScanSubsystemProcess();
+
   try {
     const limiter = createParallelLimiter();
 
@@ -1016,6 +1020,8 @@ const scanSubtitleForWork = async (work, counts) => {
 };
 
 const performSubtitleScan = async () => {
+  assertScanSubsystemProcess();
+
   const limiter = createParallelLimiter();
   const works = await db.knex('t_work').select('id', 'root_folder_id', 'dir', 'subtitle');
   const counts = {
@@ -1031,7 +1037,7 @@ const performSubtitleScan = async () => {
   const message = `中文字幕扫描完成: 更新 ${counts.updated} 个，跳过 ${counts.skipped} 个，失败 ${counts.failed} 个.`;
   const level = counts.failed ? 'warn' : 'success';
   writeConsoleLog(createLog(message, { level, type: 'summary' }));
-  process.send({
+  sendScanEvent({
     event: 'SCAN_FINISHED',
     payload: {
       message,
@@ -1044,6 +1050,8 @@ const performSubtitleScan = async () => {
 };
 
 const performTagScan = async () => {
+  assertScanSubsystemProcess();
+
   emitMainLog('扫描 DLsite 标签列表', { type: 'phase' });
   emitMainLog('正在抓取日文、简体中文和繁体中文标签...', { type: 'progress' });
 
@@ -1052,7 +1060,7 @@ const performTagScan = async () => {
   const message = `标签列表扫描完成: 新增 ${counts.inserted} 个，更新 ${counts.updated} 个，共计 ${tags.length} 个.`;
 
   writeConsoleLog(createLog(message, { level: 'success', type: 'summary' }));
-  process.send({
+  sendScanEvent({
     event: 'SCAN_FINISHED',
     payload: {
       message,
@@ -1063,6 +1071,8 @@ const performTagScan = async () => {
 };
 
 const performUpdate = async (options = null) => {
+  assertScanSubsystemProcess();
+
   emitMainLog('刷新作品元数据', { type: 'phase' });
   const works = await db.getWorksDueForMetadataRefresh({
     batchSize: config.metadataRefreshBatchSize,
@@ -1072,7 +1082,7 @@ const performUpdate = async (options = null) => {
   if (works.length === 0) {
     const message = `没有 ${config.metadataRefreshStaleDays} 天前需要刷新的作品.`;
     writeConsoleLog(createLog(message, { level: 'success', type: 'summary' }));
-    process.send({
+    sendScanEvent({
       event: 'SCAN_FINISHED',
       payload: {
         message,
@@ -1099,7 +1109,7 @@ const performUpdate = async (options = null) => {
     : `刷新完成: 更新 ${counts.updated} 个，失败 ${counts.failed} 个.`;
   const level = paused || counts.failed ? 'warn' : 'success';
   writeConsoleLog(createLog(message, { level, type: 'summary' }));
-  process.send({
+  sendScanEvent({
     event: 'SCAN_FINISHED',
     payload: {
       message,

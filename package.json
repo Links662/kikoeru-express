@@ -26,7 +26,6 @@
   "scripts": {
     "start": "node --trace-warnings app.js",
     "dev": "nodemon --trace-warnings app.js",
-    "scan": "node --trace-warnings ./filesystem/scanWorker.js",
     "test": "cross-env eslint . && cross-env NODE_ENV=test mocha test/"
   },
   "author": "Watanuki-Kimihiro",
