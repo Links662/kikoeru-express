@@ -4,6 +4,7 @@ const axios = require('./axios');
 const { hasLetter, nsfwFromAgeRating } = require('./utils');
 const scrapeWorkMetadataFromHVDB = require('./hvdb');
 const { formatRJLabel } = require('../utils/workId');
+const { normalizeVoiceActorName } = require('../utils/voiceActorName');
 
 const DEFAULT_TAG_LANGUAGE = 'zh-CN';
 const STATIC_METADATA_SOURCES = {
@@ -139,7 +140,8 @@ const scrapeHtmlWorkMetadataFromDLsite = (id, language) => new Promise((resolve,
         .filter(function () {
           return $(this).text() === VA;
         }).parent().children('td').children('a').each(function () {
-          const vaName = $(this).text().trim();
+          const vaName = normalizeVoiceActorName($(this).text());
+          if (!vaName) return;
           work.vas.push({
             name: vaName
           });
@@ -231,7 +233,7 @@ const scrapeProductWorkMetadataFromDLsite = (id, language) => new Promise((resol
       const seenVaNames = new Set();
       const vas = [];
       for (const va of voiceBy) {
-        const vaName = typeof va.name === 'string' ? va.name.trim() : '';
+        const vaName = normalizeVoiceActorName(va.name);
         if (!vaName || seenVaNames.has(vaName)) continue;
 
         seenVaNames.add(vaName);

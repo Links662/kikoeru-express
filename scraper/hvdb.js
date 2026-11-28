@@ -3,6 +3,7 @@ const htmlparser = require('htmlparser2');
 const axios = require('./axios');
 const { nsfwFromSfwFlag } = require('./utils');
 const { formatRJLabel } = require('../utils/workId');
+const { normalizeVoiceActorName } = require('../utils/voiceActorName');
 
 /**
  * Scrapes work metadata from public HVDB page HTML.
@@ -53,7 +54,12 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
         },
         onclosetag: (name) => {
           if (name === 'a' && writeTo === 'va.name') {
-            work.vas[work.vas.length - 1].name = currentVaName.trim();
+            const vaName = normalizeVoiceActorName(currentVaName);
+            if (vaName) {
+              work.vas[work.vas.length - 1].name = vaName;
+            } else {
+              work.vas.pop();
+            }
             writeTo = null;
           }
         },

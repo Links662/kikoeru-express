@@ -34,23 +34,23 @@ const httpError = (status, message) => Object.assign(new Error(message), { statu
  * 按精确名称查找或创建声优，并返回数据库分配的短整数 ID。
  */
 const getOrCreateVaId = async (trx, name) => {
-  const normalizedName = typeof name === 'string' ? name.trim() : '';
-  if (!normalizedName) return null;
+  const vaName = typeof name === 'string' ? name : '';
+  if (!vaName) return null;
 
   const existing = await trx('t_va')
     .select('id')
-    .where('name', '=', normalizedName)
+    .where('name', '=', vaName)
     .first();
   if (existing) return existing.id;
 
   try {
-    const [id] = await trx('t_va').insert({ name: normalizedName });
+    const [id] = await trx('t_va').insert({ name: vaName });
     return id;
   } catch (error) {
     if (!error || !String(error.code).startsWith('SQLITE_CONSTRAINT')) throw error;
     const concurrent = await trx('t_va')
       .select('id')
-      .where('name', '=', normalizedName)
+      .where('name', '=', vaName)
       .first();
     return concurrent ? concurrent.id : null;
   }
