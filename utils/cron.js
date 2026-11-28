@@ -30,19 +30,12 @@ const parseCron = (expression, options = {}) => {
     throw new Error(`Cron 表达式无效: ${err.message}`);
   }
 
-  return { normalized, timezone, interval };
+  return interval;
 };
 
-const getNextRuns = (expression, count = 3, options = {}) => {
-  const { interval } = parseCron(expression, options);
-  const runs = [];
-  for (let index = 0; index < count; index++) {
-    runs.push(interval.next().toDate().toISOString());
-  }
-  return runs;
-};
-
-const getNextRun = (expression, options = {}) => getNextRuns(expression, 1, options)[0];
+const getNextRun = (expression, options = {}) => (
+  parseCron(expression, options).next().toDate().toISOString()
+);
 
 const formatDateTime = (value, timezone = getDefaultTimezone()) => {
   if (!value) return null;
@@ -66,6 +59,5 @@ module.exports = {
   normalizeCronExpression,
   parseCron,
   getNextRun,
-  getNextRuns,
   formatDateTime
 };

@@ -6,12 +6,7 @@ const db = require('../database/db');
 const scannerState = require('../state/scannerState');
 const scanScheduler = require('../state/scanScheduler');
 const { isValidRequest } = require('./utils/validate');
-const {
-  formatDateTime,
-  getNextRuns,
-  normalizeCronExpression,
-  parseCron
-} = require('../utils/cron');
+const { normalizeCronExpression, parseCron } = require('../utils/cron');
 
 const { SCAN_KINDS } = scannerState;
 
@@ -58,44 +53,17 @@ const sendDbError = (res, next, err) => {
   return next(err);
 };
 
-const sendAutomationList = async (res, next, notify = false) => {
-  try {
-    if (notify) await scanScheduler.refresh();
-    res.send({
-      automations: await scanScheduler.list()
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
 // 扫描进度快照；socket 不可用（代理拦截 websocket、断线且重连失败等）时前端退化为轮询此接口
 router.get('/state', (req, res) => {
   if (!requireAdministrator(req, res)) return;
   res.send(scannerState.getSnapshot());
 });
 
-router.get('/automations', (req, res, next) => {
+router.get('/automations', async (req, res, next) => {
   if (!requireAdministrator(req, res)) return;
-  sendAutomationList(res, next);
-});
-
-router.post('/automations/preview', [
-  createCronValidator()
-], (req, res, next) => {
-  if (!requireAdministrator(req, res)) return;
-  if (!isValidRequest(req, res)) return;
-
   try {
-    const timezone = scanScheduler.getTimezone();
     res.send({
-      cronExpression: req.body.cronExpression,
-      nextRuns: getNextRuns(req.body.cronExpression, 3, {
-        timezone
-      }).map(value => ({
-        value,
-        label: formatDateTime(value, timezone)
-      }))
+      automations: await scanScheduler.list()
     });
   } catch (err) {
     next(err);

@@ -175,12 +175,10 @@ const createScanScheduler = (options = {}) => {
     stop,
     refresh,
     list: loadAutomations,
-    getTimezone: () => timezone,
     onEvent
   };
 };
 
-module.exports = {
-  createScanScheduler,
-  ...createScanScheduler()
-};
+const scanScheduler = createScanScheduler();
+module.exports = scanScheduler;
+module.exports.createScanScheduler = createScanScheduler;

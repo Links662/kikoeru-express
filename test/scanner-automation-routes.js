@@ -28,23 +28,26 @@ describe('scanner automation routes', function () {
     server.close(done);
   });
 
-  it('previews the next three cron runs', async function () {
-    const response = await axios.post(`${baseUrl}/api/scanner/automations/preview`, {
-      cronExpression: '0 3 * * *'
-    });
-
-    expect(response.status).to.equal(200);
-    expect(response.data.cronExpression).to.equal('0 3 * * *');
-    expect(response.data.nextRuns).to.have.length(3);
-    expect(response.data.nextRuns[0]).to.include.keys('value', 'label');
-    expect(response.data).to.not.have.property('timezone');
-  });
-
-  it('returns validation details for invalid cron input', async function () {
+  it('no longer exposes the preview endpoint', async function () {
     let response;
     try {
       await axios.post(`${baseUrl}/api/scanner/automations/preview`, {
-        cronExpression: '0 0 3 * * *'
+        cronExpression: '0 3 * * *'
+      });
+    } catch (err) {
+      response = err.response;
+    }
+
+    expect(response.status).to.equal(404);
+  });
+
+  it('validates cron input when creating an automation', async function () {
+    let response;
+    try {
+      await axios.post(`${baseUrl}/api/scanner/automations`, {
+        type: 'scan',
+        cronExpression: '0 0 3 * * *',
+        enabled: true
       });
     } catch (err) {
       response = err.response;
@@ -58,8 +61,10 @@ describe('scanner automation routes', function () {
     config.auth = true;
     let response;
     try {
-      await axios.post(`${baseUrl}/api/scanner/automations/preview`, {
-        cronExpression: '0 3 * * *'
+      await axios.post(`${baseUrl}/api/scanner/automations`, {
+        type: 'scan',
+        cronExpression: '0 3 * * *',
+        enabled: true
       });
     } catch (err) {
       response = err.response;

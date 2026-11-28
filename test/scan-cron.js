@@ -5,7 +5,6 @@ const {
   formatDateTime,
   getDefaultTimezone,
   getNextRun,
-  getNextRuns,
   normalizeCronExpression,
   parseCron
 } = require('../utils/cron');
@@ -33,19 +32,6 @@ describe('scan automation cron', function () {
       from: new Date('2026-11-28T00:00:00.000Z'),
       timezone: 'Asia/Shanghai'
     })).to.equal('2026-11-28T19:00:00.000Z');
-  });
-
-  it('returns multiple future runs', function () {
-    const runs = getNextRuns('0 3 * * *', 3, {
-      from: new Date('2026-11-28T00:00:00.000Z'),
-      timezone: 'Asia/Shanghai'
-    });
-
-    expect(runs).to.deep.equal([
-      '2026-11-28T19:00:00.000Z',
-      '2026-11-29T19:00:00.000Z',
-      '2026-11-30T19:00:00.000Z'
-    ]);
   });
 
   it('formats execution times using the backend timezone', function () {
