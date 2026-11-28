@@ -29,6 +29,8 @@ const { createLog, formatConsoleLog } = require('./scannerLog');
 const { config, findRootFolder } = require('../config');
 const { assertScanSubsystemProcess } = require('./workerSettings');
 
+const DELISTED_WORK_UPDATE_TIME = '2099-01-01 00:00:00';
+
 const sendScanEvent = typeof process.send === 'function'
   ? payload => process.send(payload)
   : () => {};
@@ -100,6 +102,7 @@ const RESULT_LOG_META = Object.freeze({
   repaired: { level: 'success', message: '封面修复成功' },
   upgraded: { level: 'success', message: '封面升级成功' },
   updated: { level: 'success', message: '更新成功' },
+  delisted: { level: 'warn', message: '作品已下架，跳过后续刷新' },
   blocked: { level: 'warn', message: 'DLsite 请求受限，刷新已暂停' },
   failed: { level: 'error', message: '处理失败' }
 });
@@ -953,7 +956,11 @@ const updateMetadata = (id, options = {}) => {
         type: 'item'
       });
       metadata.id = id;
-      return db.updateWorkMetadata(metadata, options)
+      const updateOptions = {
+        ...(options || {}),
+        ...(metadata.isDelisted ? { updateTime: DELISTED_WORK_UPDATE_TIME } : {})
+      };
+      return db.updateWorkMetadata(metadata, updateOptions)
         .then(() => {
           const successMessage = metadata.isDelisted
             ? '作品已下架，刷新时间已推迟至 2099 年'
@@ -965,12 +972,29 @@ const updateMetadata = (id, options = {}) => {
           return 'updated';
         });
     })
-    .catch((err) => {
-      const blocked = isDlsiteBlockedError(err);
+    .catch(async (err) => {
+      let failure = err;
+      if (failure.code === 'DLSITE_PRODUCT_UNAVAILABLE') {
+        try {
+          await db.updateWorkMetadata(
+            { id },
+            { updateTime: DELISTED_WORK_UPDATE_TIME }
+          );
+          emitTaskLog(`[${rjLabel}] 作品已下架，刷新时间已推迟至 2099 年.`, id, {
+            level: 'warn',
+            type: 'item'
+          });
+          return 'delisted';
+        } catch (dbError) {
+          failure = dbError;
+        }
+      }
+
+      const blocked = isDlsiteBlockedError(failure);
       emitTaskLog(
         blocked
-          ? `[${rjLabel}] DLsite 请求受限，暂停剩余刷新任务: ${err.message}`
-          : `[${rjLabel}] 在抓取元数据过程中出错: ${err}`,
+          ? `[${rjLabel}] DLsite 请求受限，暂停剩余刷新任务: ${failure.message}`
+          : `[${rjLabel}] 在抓取元数据过程中出错: ${failure}`,
         id,
         {
           level: blocked ? 'warn' : 'error',
@@ -1107,9 +1131,12 @@ const performUpdate = async (options = null) => {
     id => updateMetadata(id, options)
   );
   const paused = counts.paused > 0;
+  const delistedSummary = counts.delisted
+    ? `已下架 ${counts.delisted} 个，`
+    : '';
   const message = paused
-    ? `刷新已暂停: 更新 ${counts.updated} 个，失败 ${counts.failed} 个，剩余 ${counts.paused} 个.`
-    : `刷新完成: 更新 ${counts.updated} 个，失败 ${counts.failed} 个.`;
+    ? `刷新已暂停: 更新 ${counts.updated} 个，${delistedSummary}失败 ${counts.failed} 个，剩余 ${counts.paused} 个.`
+    : `刷新完成: 更新 ${counts.updated} 个，${delistedSummary}失败 ${counts.failed} 个.`;
   const level = paused || counts.failed ? 'warn' : 'success';
   writeConsoleLog(createLog(message, { level, type: 'summary' }));
   sendScanEvent({
@@ -1125,6 +1152,7 @@ const performUpdate = async (options = null) => {
 const refreshWorks = async (works, limiter, processor) => {
   const counts = {
     updated: 0,
+    delisted: 0,
     failed: 0,
     paused: 0
   };
@@ -1141,6 +1169,9 @@ const refreshWorks = async (works, limiter, processor) => {
     if (result === 'updated') {
       counts.updated += 1;
       addResult(workId, 'updated', counts.updated);
+    } else if (result === 'delisted') {
+      counts.delisted += 1;
+      addResult(workId, 'delisted', counts.delisted);
     } else if (result === 'blocked') {
       blocked = true;
       addResult(workId, 'blocked', works.length);
@@ -1153,9 +1184,12 @@ const refreshWorks = async (works, limiter, processor) => {
   await Promise.all(
     works.map(work => limiter.call(processWork, work.id))
   );
-  counts.paused = works.length - counts.updated - counts.failed;
+  counts.paused = works.length - counts.updated - counts.delisted - counts.failed;
 
-  emitMainLog(`完成元数据更新 ${counts.updated} 个，失败 ${counts.failed} 个.`, {
+  const delistedSummary = counts.delisted
+    ? `，已下架 ${counts.delisted} 个`
+    : '';
+  emitMainLog(`完成元数据更新 ${counts.updated} 个${delistedSummary}，失败 ${counts.failed} 个.`, {
     level: counts.failed || counts.paused ? 'warn' : 'success',
     type: 'summary'
   });

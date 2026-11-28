@@ -170,10 +170,11 @@ describe('work metadata updates', function () {
     expect((await knex('t_circle').where('id', 1).first()).name).to.equal('Renamed circle');
   });
 
-  it('defers delisted works until 2099', async function () {
-    await applyWorkMetadataUpdate(knex, metadata({
-      isDelisted: true
-    }), { refreshAll: true });
+  it('writes the refresh time supplied by the caller', async function () {
+    await applyWorkMetadataUpdate(knex, metadata(), {
+      refreshAll: true,
+      updateTime: '2099-01-01 00:00:00'
+    });
 
     const work = await knex('t_work').where('id', 100).first();
     expect(work.update_time).to.equal('2099-01-01 00:00:00');

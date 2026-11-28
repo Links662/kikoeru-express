@@ -17,6 +17,10 @@ const dlsiteBlockedError = message => Object.assign(new Error(message), {
   isDlsiteBlocked: true
 });
 
+const dlsiteProductUnavailableError = message => Object.assign(new Error(message), {
+  code: 'DLSITE_PRODUCT_UNAVAILABLE'
+});
+
 const getResponseStatus = error => (
   error && error.response && Number(error.response.status)
 ) || null;
@@ -188,6 +192,11 @@ const scrapeProductWorkMetadataFromDLsite = (id) => new Promise((resolve, reject
     .then((response) => {
       if (typeof response.data === 'string' && /^\s*</.test(response.data)) {
         throw dlsiteBlockedError('DLsite product API returned HTML instead of JSON.');
+      }
+      if (Array.isArray(response.data) && response.data.length === 0) {
+        throw dlsiteProductUnavailableError(
+          `DLsite no longer offers product ${rjLabel}.`
+        );
       }
       const item = Array.isArray(response.data) ? response.data[0] : response.data;
       if (!item || typeof item !== 'object') {

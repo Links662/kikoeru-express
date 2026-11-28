@@ -160,6 +160,20 @@ describe('DLsite metadata scraping', function () {
     expect(work.circle.id).to.equal(62782);
   });
 
+  it('classifies an empty product response as unavailable', async function () {
+    scraperAxios.retryGet = async () => ({ data: [] });
+
+    let error;
+    try {
+      await scrapeProductWorkMetadataFromDLsite(309537);
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).to.be.an('error');
+    expect(error.code).to.equal('DLSITE_PRODUCT_UNAVAILABLE');
+  });
+
   it('uses product.json by default and merges optional dynamic statistics', async function () {
     const calls = [];
     scraperAxios.retryGet = async (url) => {
