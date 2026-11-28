@@ -9,6 +9,91 @@ CREATE TEMP TABLE va_id_map (
   new_id INTEGER NOT NULL
 );
 
+CREATE TEMP TABLE va_name_normalized (
+  source_rowid INTEGER NOT NULL,
+  old_id TEXT,
+  normalized_name TEXT NOT NULL
+);
+
+-- Remove paired bracketed content character by character, then strip whitespace.
+WITH RECURSIVE name_chars (
+  source_rowid,
+  old_id,
+  raw_name,
+  pos,
+  stack,
+  cleaned
+) AS (
+  SELECT rowid, id, name, 1, '', ''
+  FROM t_va
+
+  UNION ALL
+
+  SELECT
+    source_rowid,
+    old_id,
+    raw_name,
+    pos + 1,
+    CASE
+      WHEN substr(raw_name, pos, 1) = '(' THEN stack || ')'
+      WHEN substr(raw_name, pos, 1) = '（' THEN stack || '）'
+      WHEN substr(raw_name, pos, 1) = '[' THEN stack || ']'
+      WHEN substr(raw_name, pos, 1) = '【' THEN stack || '】'
+      WHEN substr(raw_name, pos, 1) = '〔' THEN stack || '〕'
+      WHEN substr(raw_name, pos, 1) = '［' THEN stack || '］'
+      WHEN substr(raw_name, pos, 1) IN ('{', '｛') THEN stack || '}'
+      WHEN substr(raw_name, pos, 1) = '《' THEN stack || '》'
+      WHEN substr(raw_name, pos, 1) = '〈' THEN stack || '〉'
+      WHEN substr(raw_name, pos, 1) = '「' THEN stack || '」'
+      WHEN substr(raw_name, pos, 1) = '『' THEN stack || '』'
+      WHEN length(stack) > 0
+        AND substr(raw_name, pos, 1) = substr(stack, -1, 1)
+        THEN substr(stack, 1, length(stack) - 1)
+      ELSE stack
+    END,
+    CASE
+      WHEN length(stack) = 0
+        AND instr('([（【〔［{｛《〈「『', substr(raw_name, pos, 1)) = 0
+        THEN cleaned || substr(raw_name, pos, 1)
+      ELSE cleaned
+    END
+  FROM name_chars
+  WHERE pos <= length(raw_name)
+)
+INSERT INTO va_name_normalized (source_rowid, old_id, normalized_name)
+SELECT
+  source_rowid,
+  old_id,
+  replace(
+    replace(
+      replace(
+        replace(
+          replace(cleaned, ' ', ''),
+          char(9), ''
+        ),
+        char(10), ''
+      ),
+      char(13), ''
+    ),
+    char(12288), ''
+  )
+FROM name_chars
+WHERE pos = length(raw_name) + 1;
+
+CREATE TEMP TABLE va_name_guard (
+  ok INTEGER NOT NULL CHECK (ok = 1)
+);
+
+INSERT INTO va_name_guard (ok)
+SELECT CASE
+  WHEN EXISTS (
+    SELECT 1
+    FROM va_name_normalized
+    WHERE normalized_name = ''
+  ) THEN 0
+  ELSE 1
+END;
+
 CREATE TABLE t_va_new (
   id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   name varchar(255) NOT NULL UNIQUE
@@ -16,15 +101,17 @@ CREATE TABLE t_va_new (
 
 -- 完全相同的名称只保留一个声优；规则与旧 UUIDv5 的复用语义一致。
 INSERT INTO t_va_new (name)
-SELECT name
-FROM t_va
-GROUP BY name
-ORDER BY MIN(rowid);
+SELECT normalized_name
+FROM va_name_normalized
+WHERE old_id IS NOT NULL
+GROUP BY normalized_name
+ORDER BY MIN(source_rowid);
 
 INSERT INTO va_id_map (old_id, new_id)
 SELECT old_va.id, new_va.id
 FROM t_va AS old_va
-JOIN t_va_new AS new_va ON new_va.name = old_va.name
+JOIN va_name_normalized AS normalized ON normalized.old_id = old_va.id
+JOIN t_va_new AS new_va ON new_va.name = normalized.normalized_name
 WHERE old_va.id IS NOT NULL;
 
 ALTER TABLE r_va_work RENAME TO r_va_work_old;
@@ -80,6 +167,8 @@ WHERE rowid NOT IN (
 );
 
 DROP TABLE va_id_map;
+DROP TABLE va_name_normalized;
+DROP TABLE va_name_guard;
 
 CREATE VIEW staticMetadata AS
 SELECT

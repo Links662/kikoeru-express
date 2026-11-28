@@ -78,9 +78,9 @@ describe('voice actor integer ID migration', function () {
       INSERT INTO t_work (id, root_folder_id, dir, title, circle_id)
         VALUES (1, 1, 'RJ100001', 'One', 1), (2, 1, 'RJ100002', 'Two', 1);
       INSERT INTO t_va (id, name) VALUES
-        ('uuid-b', 'Same Name'),
-        ('uuid-a', 'Same Name'),
-        ('uuid-c', 'Other');
+        ('uuid-b', 'Same Name (CV)'),
+        ('uuid-a', 'SameName'),
+        ('uuid-c', 'Other [CV]');
       INSERT INTO r_va_work (va_id, work_id) VALUES
         ('uuid-b', 1),
         ('uuid-a', 1),
@@ -101,7 +101,7 @@ describe('voice actor integer ID migration', function () {
 
     const voiceActors = await all(db, 'SELECT id, name FROM t_va ORDER BY id');
     expect(voiceActors).to.deep.equal([
-      { id: 1, name: 'Same Name' },
+      { id: 1, name: 'SameName' },
       { id: 2, name: 'Other' }
     ]);
 
@@ -122,7 +122,7 @@ describe('voice actor integer ID migration', function () {
     ]);
 
     const metadata = await all(db, 'SELECT id, vaObj FROM staticMetadata ORDER BY id');
-    expect(JSON.parse(metadata[0].vaObj).vas).to.deep.equal([{ id: 1, name: 'Same Name' }]);
+    expect(JSON.parse(metadata[0].vaObj).vas).to.deep.equal([{ id: 1, name: 'SameName' }]);
     expect(await all(db, 'PRAGMA foreign_key_check')).to.deep.equal([]);
   });
 });

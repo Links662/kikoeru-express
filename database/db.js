@@ -287,6 +287,52 @@ const cleanupOrphans = async (trx, circle, tags, vas)  => {
 };
 
 /**
+ * 删除没有任何作品关联的声优和社团，并清理它们的收藏记录。
+ */
+const cleanupOrphanEntities = async (trx) => {
+  const orphanVaIds = await trx('t_va as va')
+    .select('va.id')
+    .whereNotExists(function () {
+      this.select(1)
+        .from('r_va_work as relation')
+        .whereRaw('relation.va_id = va.id');
+    })
+    .pluck('va.id');
+
+  if (orphanVaIds.length > 0) {
+    const stringIds = orphanVaIds.map(id => String(id));
+    await trx('t_favourite')
+      .where('field', '=', 'va')
+      .whereIn('item_id', stringIds)
+      .del();
+    await trx('t_va').whereIn('id', orphanVaIds).del();
+  }
+
+  const orphanCircleIds = await trx('t_circle as circle')
+    .select('circle.id')
+    .whereNotExists(function () {
+      this.select(1)
+        .from('t_work as work')
+        .whereRaw('work.circle_id = circle.id');
+    })
+    .pluck('circle.id');
+
+  if (orphanCircleIds.length > 0) {
+    const stringIds = orphanCircleIds.map(id => String(id));
+    await trx('t_favourite')
+      .where('field', '=', 'circle')
+      .whereIn('item_id', stringIds)
+      .del();
+    await trx('t_circle').whereIn('id', orphanCircleIds).del();
+  }
+
+  return {
+    circleCount: orphanCircleIds.length,
+    vaCount: orphanVaIds.length
+  };
+};
+
+/**
  * Removes a work and then its orphaned circles, tags & VAs from the database.
  * @param {Integer} id Work id.
  */
@@ -938,6 +984,7 @@ const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) 
 
 module.exports = {
   knex, applyWorkFilters, applyWorkConditions, insertWorkMetadata, getWorkMetadata, removeWork,
+  cleanupOrphanEntities,
   getWorksByConditions, getWorkConditionLabels,
   applyWorkMetadataUpdate, updateWorkMetadata,
   updateWorkSubtitle,

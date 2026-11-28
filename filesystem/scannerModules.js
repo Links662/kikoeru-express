@@ -641,6 +641,7 @@ const createParallelLimiter = () => new LimitPromise(
  */
 const performCleanup = async (folderCount, protectedWorkIds = new Set()) => {
   const removedWorkIds = [];
+  let orphanCounts = { circleCount: 0, vaCount: 0 };
 
   await db.knex.transaction(async trx => {
     const works = await trx('t_work').select('id', 'root_folder_id', 'dir');
@@ -664,6 +665,8 @@ const performCleanup = async (folderCount, protectedWorkIds = new Set()) => {
         removedWorkIds.push(work.id);
       }
     }
+
+    orphanCounts = await db.cleanupOrphanEntities(trx);
   });
 
   // 数据库提交成功后再删除文件，避免事务回滚时封面已经丢失。
@@ -684,7 +687,10 @@ const performCleanup = async (folderCount, protectedWorkIds = new Set()) => {
     }
   }
 
-  return removedWorkIds.length;
+  return {
+    removedWorkCount: removedWorkIds.length,
+    ...orphanCounts
+  };
 };
 
 const prepareEnvironment = async () => {
@@ -698,12 +704,15 @@ const prepareEnvironment = async () => {
 
 const runCleanupStep = async (folderCount, protectedWorkIds) => {
   emitMainLog('清理本地不再存在的音声的数据与封面图片...', { type: 'progress' });
-  const removedCount = await performCleanup(folderCount, protectedWorkIds);
-  emitMainLog(`清理完成，共清理 ${removedCount} 个失效作品.`, {
+  const result = await performCleanup(folderCount, protectedWorkIds);
+  emitMainLog(
+    `清理完成，共清理 ${result.removedWorkCount} 个失效作品、${result.vaCount} 个孤立声优和 ${result.circleCount} 个孤立社团.`,
+    {
     level: 'success',
     type: 'item'
-  });
-  return removedCount;
+    }
+  );
+  return result.removedWorkCount;
 };
 
 const collectAllFolders = async () => {
