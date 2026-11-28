@@ -34,6 +34,13 @@ const isDlsiteChallengeResponse = data => (
   /(?:cloudflare|access denied|just a moment|attention required)/i.test(data)
 );
 
+const isProductDelisted = item => (
+  item.on_sale === 0 ||
+  item.on_sale === '0' ||
+  item.on_sale === false ||
+  item.on_sale === 'false'
+);
+
 const requestError = (error, url, label) => {
   const status = error && error.response && error.response.status;
   const wrapped = new Error(status
@@ -312,6 +319,7 @@ const scrapeProductWorkMetadataFromDLsite = (id) => new Promise((resolve, reject
         circle: { id: circleId, name: circleName },
         nsfw,
         release,
+        isDelisted: isProductDelisted(item),
         tags,
         vas,
         rate_count: rateCount,

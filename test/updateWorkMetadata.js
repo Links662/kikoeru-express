@@ -170,6 +170,15 @@ describe('work metadata updates', function () {
     expect((await knex('t_circle').where('id', 1).first()).name).to.equal('Renamed circle');
   });
 
+  it('defers delisted works until 2099', async function () {
+    await applyWorkMetadataUpdate(knex, metadata({
+      isDelisted: true
+    }), { refreshAll: true });
+
+    const work = await knex('t_work').where('id', 100).first();
+    expect(work.update_time).to.equal('2099-01-01 00:00:00');
+  });
+
   it('does not overwrite an existing tag during work refresh', async function () {
     await knex('t_tag').insert({ id: 3, name: '现有名称' });
 

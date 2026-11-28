@@ -955,7 +955,10 @@ const updateMetadata = (id, options = {}) => {
       metadata.id = id;
       return db.updateWorkMetadata(metadata, options)
         .then(() => {
-          emitTaskLog(`[${rjLabel}] 元数据更新成功`, id, {
+          const successMessage = metadata.isDelisted
+            ? '作品已下架，刷新时间已推迟至 2099 年'
+            : '元数据更新成功';
+          emitTaskLog(`[${rjLabel}] ${successMessage}`, id, {
             level: 'success',
             type: 'item'
           });

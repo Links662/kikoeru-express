@@ -140,6 +140,15 @@ describe('DLsite metadata scraping', function () {
     expect(work.rate_count).to.equal(0);
     expect(work.rate_average_2dp).to.equal(0);
     expect(work.rank).to.equal(null);
+    expect(work.isDelisted).to.equal(true);
+  });
+
+  it('marks on-sale works as active', async function () {
+    const item = loadFixture('dlsite-product-rj01171233.json')[0];
+    scraperAxios.retryGet = async () => ({ data: [{ ...item, on_sale: 1 }] });
+    const work = await scrapeProductWorkMetadataFromDLsite(1171233);
+
+    expect(work.isDelisted).to.equal(false);
   });
 
   it('accepts an object response as well as the usual array', async function () {
@@ -232,6 +241,7 @@ describe('DLsite metadata scraping', function () {
     expect(work.title).to.equal('NoTitle');
     expect(work.vas).to.deep.equal([]);
     expect(work.tags).to.have.length(7);
+    expect(work.isDelisted).to.equal(true);
   });
 
   it('parses the localized full tag catalog from the genre list page', async function () {

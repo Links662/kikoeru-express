@@ -9,6 +9,7 @@ const conn = require('./knexfile')[connEnv]
 const knex = require('knex')(conn);
 
 const TAG_LOCALES = Object.freeze(['ja-jp', 'zh-cn', 'zh-tw']);
+const DELISTED_WORK_UPDATE_TIME = '2099-01-01 00:00:00';
 
 const syncTagNamesFromTranslations = async (
   database = knex,
@@ -164,7 +165,9 @@ const applyWorkMetadataUpdate = async (trx, work, options = {}) => {
   if (work.rank !== undefined) {
     dynamicUpdate.rank = work.rank ? JSON.stringify(work.rank) : null;
   }
-  dynamicUpdate.update_time = options.updateTime || trx.fn.now();
+  dynamicUpdate.update_time = work.isDelisted
+    ? DELISTED_WORK_UPDATE_TIME
+    : (options.updateTime || trx.fn.now());
 
   if (Object.keys(dynamicUpdate).length) {
     await trx('t_work')

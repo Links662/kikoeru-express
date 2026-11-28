@@ -46,7 +46,8 @@ describe('metadata refresh selection', function () {
       { id: 2, update_time: sqliteTime(now - 9 * DAY) },
       { id: 3, update_time: sqliteTime(now - 2 * DAY) },
       { id: 4, update_time: sqliteTime(now - 20 * DAY) },
-      { id: 5, update_time: sqliteTime(now - 7 * DAY) }
+      { id: 5, update_time: sqliteTime(now - 7 * DAY) },
+      { id: 6, update_time: '2099-01-01 00:00:00' }
     ]);
   });
 
