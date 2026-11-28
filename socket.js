@@ -4,6 +4,7 @@ const { config } = require('./config');
 const { getUserState } = require('./database/db');
 const scannerState = require('./state/scannerState');
 const scanScheduler = require('./state/scanScheduler');
+const { SCAN_DEFINITIONS } = require('./state/scanDefinitions');
 const { registerUserSocket, unregisterUserSocket } = require('./state/userSockets');
 
 const ADMIN_ROOM = 'administrator';
@@ -107,25 +108,11 @@ const initSocket = (server) => {
       scannerState.requestInitState();
     });
 
-    onAdministratorEvent('PERFORM_SCAN', () => {
-      scannerState.startScan('scan');
-    });
-
-    onAdministratorEvent('PERFORM_UPDATE', () => {
-      scannerState.startScan('update');
-    });
-
-    onAdministratorEvent('PERFORM_TAG_SCAN', () => {
-      scannerState.startScan('tags');
-    });
-
-    onAdministratorEvent('PERFORM_SUBTITLE_SCAN', () => {
-      scannerState.startScan('subtitles');
-    });
-
-    onAdministratorEvent('PERFORM_COVER_REPAIR', () => {
-      scannerState.startScan('covers');
-    });
+    for (const definition of SCAN_DEFINITIONS) {
+      onAdministratorEvent(definition.actionEvent, () => {
+        scannerState.startScan(definition.kind);
+      });
+    }
 
     onAdministratorEvent('KILL_SCAN_PROCESS', () => {
       // 没有扫描在跑时安全忽略：原先这里会对 null 调 send()，直接把服务端打崩

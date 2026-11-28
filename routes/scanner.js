@@ -5,10 +5,9 @@ const { config } = require('../config');
 const db = require('../database/db');
 const scannerState = require('../state/scannerState');
 const scanScheduler = require('../state/scanScheduler');
+const { SCAN_KINDS } = require('../state/scanDefinitions');
 const { isValidRequest } = require('./utils/validate');
 const { normalizeCronExpression, parseCron } = require('../utils/cron');
-
-const { SCAN_KINDS } = scannerState;
 
 const isAdministrator = req => (
   !config.auth || (req.user !== undefined && req.user.group === 'administrator')

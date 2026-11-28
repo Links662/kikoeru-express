@@ -1,9 +1,4 @@
-const { loadWorkerSettings } = require('./workerSettings');
+const { performUpdate } = require('./scanner/metadataRefresh');
+const { runScanWorker } = require('./scanner/operationRunner');
 
-loadWorkerSettings()
-  .then(({ performUpdate }) => performUpdate({ refreshAll: true }))
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+runScanWorker(() => performUpdate({ refreshAll: true }));

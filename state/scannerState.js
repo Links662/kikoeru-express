@@ -1,5 +1,12 @@
-const path = require('path');
 const child_process = require('child_process');
+const { SCANNER_ENTRY } = require('./scanDefinitions');
+const {
+  createScanSnapshot,
+  reduceScanEvent,
+  resetScanSnapshot,
+  buildScanSnapshot,
+  normalizeSource
+} = require('./scannerSnapshot');
 
 /**
  * 扫描进程的唯一状态源。
@@ -13,32 +20,8 @@ const child_process = require('child_process');
  *  - routes/scanner.js 暴露 getSnapshot()，供前端在 socket 不可用时轮询（兜底）
  */
 
-const SCANNER_ENTRY = {
-  scan: path.join(__dirname, '../filesystem/scanWorker.js'),
-  update: path.join(__dirname, '../filesystem/updateWorker.js'),
-  tags: path.join(__dirname, '../filesystem/tagScanWorker.js'),
-  subtitles: path.join(__dirname, '../filesystem/subtitleScanWorker.js'),
-  covers: path.join(__dirname, '../filesystem/coverScanWorker.js')
-};
-const SCAN_KINDS = Object.freeze(Object.keys(SCANNER_ENTRY));
-
 let scanner = null;
-
-// 与 socket 广播内容保持一致的进度快照
-const snapshot = {
-  kind: null,
-  source: null,
-  startedAt: null,
-  finishedAt: null,
-  phase: null,
-  status: null, // null(本次进程内还没扫过) | 'running' | 'finished' | 'error'
-  tasks: [],
-  failedTasks: [],
-  mainLogs: [],
-  results: [],
-  message: null,
-  messageLevel: null
-};
+let snapshot = createScanSnapshot();
 
 const listeners = [];
 
@@ -47,60 +30,8 @@ const onEvent = (handler) => {
   listeners.push(handler);
 };
 
-const getLatestPhase = (logs = []) => {
-  for (let index = logs.length - 1; index >= 0; index -= 1) {
-    if (logs[index].type === 'phase') return logs[index].message;
-  }
-  return null;
-};
-
-const normalizeSource = (source) => {
-  if (source && source.type === 'automation') {
-    return {
-      type: 'automation',
-      automationId: source.automationId
-    };
-  }
-  return { type: 'manual' };
-};
-
 const applyEvent = (event, payload) => {
-  switch (event) {
-    case 'SCAN_TASKS':
-      snapshot.tasks = payload.tasks;
-      break;
-    case 'SCAN_FAILED_TASKS':
-      snapshot.failedTasks = payload.failedTasks;
-      break;
-    case 'SCAN_MAIN_LOGS':
-      snapshot.mainLogs = payload.mainLogs;
-      snapshot.phase = getLatestPhase(payload.mainLogs);
-      break;
-    case 'SCAN_RESULTS':
-      snapshot.results = payload.results;
-      break;
-    case 'SCAN_INIT_STATE':
-      // 子进程重发当前进度（刷新页面 / 新客户端加入时）
-      snapshot.status = 'running';
-      snapshot.tasks = payload.tasks;
-      snapshot.failedTasks = payload.failedTasks;
-      snapshot.mainLogs = payload.mainLogs;
-      snapshot.results = payload.results;
-      snapshot.phase = getLatestPhase(payload.mainLogs);
-      break;
-    case 'SCAN_FINISHED':
-      snapshot.message = payload.message;
-      snapshot.messageLevel = payload.level || 'info';
-      snapshot.status = 'finished';
-      snapshot.finishedAt = new Date().toISOString();
-      break;
-    case 'SCAN_ERROR':
-      snapshot.status = 'error';
-      snapshot.finishedAt = new Date().toISOString();
-      break;
-    default:
-      break;
-  }
+  snapshot = reduceScanEvent(snapshot, event, payload);
 };
 
 const publish = (event, payload) => {
@@ -108,21 +39,6 @@ const publish = (event, payload) => {
   listeners.forEach((handler) => {
     handler(event, payload);
   });
-};
-
-const resetSnapshot = (kind, source) => {
-  snapshot.status = 'running';
-  snapshot.kind = kind;
-  snapshot.source = source;
-  snapshot.startedAt = new Date().toISOString();
-  snapshot.finishedAt = null;
-  snapshot.phase = null;
-  snapshot.tasks = [];
-  snapshot.failedTasks = [];
-  snapshot.mainLogs = [];
-  snapshot.results = [];
-  snapshot.message = null;
-  snapshot.messageLevel = null;
 };
 
 /**
@@ -136,7 +52,11 @@ const startScan = (kind = 'scan', source = { type: 'manual' }) => {
   const normalizedKind = Object.prototype.hasOwnProperty.call(SCANNER_ENTRY, kind)
     ? kind
     : 'scan';
-  resetSnapshot(normalizedKind, normalizeSource(source));
+  snapshot = resetScanSnapshot(
+    snapshot,
+    normalizedKind,
+    normalizeSource(source)
+  );
 
   const entry = SCANNER_ENTRY[normalizedKind];
   scanner = child_process.fork(entry, [], {
@@ -194,34 +114,9 @@ const requestInitState = () => {
   return true;
 };
 
-const getSnapshot = () => {
-  const results = snapshot.results;
-  return {
-    status: snapshot.status,
-    kind: snapshot.kind,
-    source: snapshot.source,
-    startedAt: snapshot.startedAt,
-    finishedAt: snapshot.finishedAt,
-    phase: snapshot.phase,
-    counters: {
-      completed: results.length,
-      running: snapshot.tasks.length,
-      failed: results.filter(result => result.result === 'failed').length,
-      skipped: results.filter(result => result.result === 'skipped').length,
-      blocked: results.filter(result => result.result === 'blocked').length,
-      total: null
-    },
-    tasks: snapshot.tasks,
-    failedTasks: snapshot.failedTasks,
-    mainLogs: snapshot.mainLogs,
-    results,
-    message: snapshot.message,
-    messageLevel: snapshot.messageLevel
-  };
-};
+const getSnapshot = () => buildScanSnapshot(snapshot);
 
 module.exports = {
-  SCAN_KINDS,
   onEvent,
   startScan,
   killScan,

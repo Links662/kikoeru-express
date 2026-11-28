@@ -1,9 +1,4 @@
-const { loadWorkerSettings } = require('./workerSettings');
+const { performTagScan } = require('./scanner/tagSync');
+const { runScanWorker } = require('./scanner/operationRunner');
 
-loadWorkerSettings()
-  .then(({ performTagScan }) => performTagScan())
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+runScanWorker(() => performTagScan());

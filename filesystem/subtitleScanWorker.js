@@ -1,8 +1,7 @@
-const { loadWorkerSettings } = require('./workerSettings');
+const { performSubtitleScan } = require('./scanner/subtitleScan');
+const { runScanWorker } = require('./scanner/operationRunner');
 
-loadWorkerSettings()
-  .then(({ performSubtitleScan }) => performSubtitleScan())
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+runScanWorker(
+  () => performSubtitleScan(),
+  { getExitCode: counts => (counts.failed ? 1 : 0) }
+);

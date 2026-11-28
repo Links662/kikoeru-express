@@ -17,13 +17,12 @@ const {
   getFileStamp,
   COVER_TYPES
 } = require('../filesystem/utils');
-// 注意：这里加载 scannerModules 只是拿封面维护逻辑，它的数据库连接是懒加载的，测试里不会碰数据库
 const {
   generateCoverFromMain,
   planCoverMaintenance,
   maintainCovers,
   upgradeCovers
-} = require('../filesystem/scannerModules');
+} = require('../filesystem/scanner/coverMaintenance');
 
 const WORK_ID = 300650;
 const RJCODE = '300650';

@@ -3,7 +3,7 @@ const chai = require('chai');
 const expect = chai.expect;
 const path = require('path');
 
-const { planMovedWorkRemap } = require('../filesystem/scannerModules');
+const { planMovedWorkRemap } = require('../filesystem/scanner/libraryScan');
 
 describe('scan path remapping', function () {
   it('remaps a missing path only when there is exactly one candidate', function () {

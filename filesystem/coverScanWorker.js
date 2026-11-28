@@ -1,8 +1,4 @@
-const { loadWorkerSettings } = require('./workerSettings');
+const { performScan } = require('./scanner/libraryScan');
+const { runScanWorker } = require('./scanner/operationRunner');
 
-loadWorkerSettings()
-  .then(({ performScan }) => performScan({ coversOnly: true }))
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+runScanWorker(() => performScan({ coversOnly: true }));

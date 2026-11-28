@@ -79,7 +79,7 @@ npm test
 - 持久字段是 `t_work.subtitle`，API 字段是 `metadata.subtitle`，对前端输出布尔值。
 - “有字幕”的定义是作品目录中存在任意 `.lrc` 文件，扩展名判断不区分大小写。
 - `.srt`、`.ass` 可以作为文本文件播放，但不算字幕状态。
-- `filesystem/utils.js` 的 `hasLrc()` 是判定入口；`filesystem/scannerModules.js` 的 `performSubtitleScan()` 负责回写数据库。
+- `filesystem/utils.js` 的 `hasLrc()` 是判定入口；`filesystem/scanner/subtitleScan.js` 的 `performSubtitleScan()` 负责回写数据库。
 
 ## 扫描子系统
 

@@ -32,12 +32,12 @@ describe('scan worker boundary', function () {
     delete process.env.KIKOERU_SCAN_WORKER;
 
     try {
+      const { performScan } = require('../filesystem/scanner/libraryScan');
+      const { performUpdate } = require('../filesystem/scanner/metadataRefresh');
+      const { performTagScan } = require('../filesystem/scanner/tagSync');
       const {
-        performScan,
-        performUpdate,
-        performTagScan,
         performSubtitleScan
-      } = require('../filesystem/scannerModules');
+      } = require('../filesystem/scanner/subtitleScan');
       const operations = [
         performScan,
         performUpdate,
