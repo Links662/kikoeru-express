@@ -99,10 +99,10 @@ describe('voice actor integer IDs', function () {
     works.forEach(work => expect(work.update_time).to.match(/^\d{4}-\d{2}-\d{2} /));
   });
 
-  it('keeps tag relations without writing names when tag ids are missing', async function () {
+  it('creates missing tag ids with their Japanese names', async function () {
     await insertWorkMetadata(metadata(102, [], [
-      { id: 77 },
-      { id: 78 }
+      { id: 77, name: '日语标签' },
+      { id: 78, name: '另一个日语标签' }
     ]), knex);
 
     expect(await knex('r_tag_work').where('work_id', 102).orderBy('tag_id').pluck('tag_id'))
@@ -112,8 +112,8 @@ describe('voice actor integer IDs', function () {
       .orderBy('id')
       .select('id', 'name'))
       .to.deep.equal([
-        { id: 77, name: 'Error' },
-        { id: 78, name: 'Error' }
+        { id: 77, name: '日语标签' },
+        { id: 78, name: '另一个日语标签' }
       ]);
   });
 });

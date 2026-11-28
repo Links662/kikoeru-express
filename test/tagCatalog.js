@@ -56,7 +56,7 @@ describe('tag catalog persistence', function () {
     expect(await knex('t_tag_translation').where('id', 497).count({ count: '*' }).first())
       .to.deep.equal({ count: 3 });
     expect((await knex('t_tag').where('id', 14).first()).name).to.equal('情侣');
-    expect((await knex('t_tag').where('id', 497).first()).name).to.equal('ASMR');
+    expect(await knex('t_tag').where('id', 497).first()).to.equal(undefined);
   });
 
   it('keeps a previous translation when a later catalog omits that language', async function () {

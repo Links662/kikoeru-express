@@ -44,7 +44,7 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
               work.tags.push({
                 id: attrs.href.substring(attrs.href.lastIndexOf('/') + 1),
               });
-              writeTo = null;
+              writeTo = 'tag.name';
             } else if (attrs.href.indexOf('CVWorks') !== -1) {
               work.vas.push({});
               writeTo = 'va.name';
@@ -67,6 +67,9 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
           switch (writeTo) {
             case 'circle.name':
               work.circle.name = text;
+              break;
+            case 'tag.name':
+              work.tags[work.tags.length - 1].name = text.trim();
               break;
             case 'va.name':
               currentVaName += text;

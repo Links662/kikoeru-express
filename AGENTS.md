@@ -69,7 +69,7 @@ npm test
 - `staticMetadata` 是 API 主要读取的视图。修改 `t_work`、`t_circle`、标签或声优关系后，必须重建该视图，并保持 `circle_name`、`subtitle`、`tagObj`、`vaObj` 等字段契约。
 - `t_tag(id, name)` 保持原结构，继续供作品查询读取。
 - `t_tag_translation(id, locale, name)` 保存多语言标签名称，主键为 `(id, locale)`；作品抓取只负责标签 ID，全量名称由“扫描标签列表”维护。
-- `t_app_setting.tagLanguage` 是全站标签显示语言；全局语言变化或标签列表扫描完成后，都会按当前语言刷新 `t_tag.name`，缺失翻译固定写为 `Error`。
+- `t_app_setting.tagLanguage` 是全站标签显示语言；全局语言变化或标签列表扫描完成后，只更新存在目标语言非空翻译的标签，其他 `t_tag.name` 保持不变。
 - 播放历史是 `(work_id, user_name)` 一条记录，`file_index` 表示最后播放的曲目；评论主键是 `(user_name, work_id)`；标签收藏等使用 `t_favourite`。
 
 ## 字幕规则（强制）

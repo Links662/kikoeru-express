@@ -50,7 +50,7 @@ describe('DLsite metadata scraping', function () {
     expect(work.nsfw).to.equal(true);
     expect(work.release).to.equal('2024-04-01');
     expect(work.tags).to.have.length(7);
-    expect(work.tags[0]).to.deep.equal({ id: 497 });
+    expect(work.tags[0]).to.deep.equal({ id: 497, name: 'ASMR' });
     expect(work.vas.map(va => va.name)).to.deep.equal(['柚木つばめ']);
   });
 
@@ -328,7 +328,7 @@ describe('DLsite metadata scraping', function () {
     const work = await scrapeWorkMetadataFromDLsite(1171233, { source: 'html' });
 
     expect(work.title).to.equal('NoTitle');
-    expect(work.tags).to.deep.equal([{ id: 497 }]);
+    expect(work.tags).to.deep.equal([{ id: 497, name: 'ASMR' }]);
     expect(work.vas.map(va => va.name)).to.deep.equal(['柚木つばめ']);
     expect(calls.some(url => url.includes('product.json'))).to.equal(false);
   });

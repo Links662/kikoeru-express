@@ -4,6 +4,30 @@
 
 # 数据库版本变更记录
 
+## 20261128 - 移除标签翻译外键
+
+迁移文件：`20261128_drop_tag_translation_foreign_key.sql`
+
+执行前提：数据库中的 `t_tag_translation` 仍带有指向 `t_tag(id)` 的外键。
+
+### 结构变更
+
+- 重建 `t_tag_translation(id, locale, name)`，保留复合主键 `(id, locale)`。
+- 保留全部翻译数据。
+- 移除 `t_tag_translation.id → t_tag.id` 外键。
+
+### 迁移步骤
+
+1. 停止 Kikoeru 服务并备份 `sqlite/db.sqlite3`。
+2. 执行 `20261128_drop_tag_translation_foreign_key.sql`。
+3. 启动服务，执行一次标签列表扫描并检查标签名称。
+
+### 验证
+
+- `PRAGMA foreign_key_list(t_tag_translation);` 应返回空结果。
+- `PRAGMA foreign_key_check;` 应返回空结果。
+- 翻译记录数量应与迁移前一致。
+
 ## 20261128 - 标签多语言
 
 迁移文件：`20261128_add_tag_translations.sql`
@@ -17,9 +41,10 @@
 - 每个标签最多保存 `ja-jp`、`zh-cn`、`zh-tw` 三行；空名称使用空字符串。
 - 标签列表扫描更新 `t_tag_translation` 后，会按当前全局语言刷新 `t_tag.name`。
 - 全局标签语言实际变化时，也会将该 locale 的名称批量写入 `t_tag.name`。
-- 无法取得当前语言翻译时，`t_tag.name` 固定写为 `Error`。
+- 只有目标语言存在非空翻译时才更新对应标签；其余标签名称保持不变。
+- 作品抓取发现未知标签 ID 时写入日文名称；已有 ID 永远不覆盖名称。
 - 旧标签名称因无法可靠判断语言，不自动迁移；升级后通过标签列表扫描重建名称。
-- `staticMetadata.tagObj` 同时输出三种语言名称。
+- `staticMetadata.tagObj` 继续从 `t_tag` 输出单一 `name`，不读取翻译表。
 - 保留 `t_app_setting.tagLanguage` 作为全站标签显示语言，默认 `zh-cn`。
 
 ### 使用步骤
@@ -27,14 +52,14 @@
 1. 停止 Kikoeru 服务并备份 `sqlite/db.sqlite3`。
 2. 对数据库执行 `20261128_add_tag_translations.sql`。
 3. 启动服务，在管理后台的扫描页执行一次“扫描标签列表”。
-4. 确认标签列表与作品卡片可以在简、繁、日三种名称之间即时切换。
+4. 管理员切换全站标签语言后刷新页面，确认有目标语言翻译的标签完成切换，其余标签保持原名称。
 
 ### 验证
 
 - 执行 `PRAGMA foreign_key_check;`，结果应为空。
 - 确认 `t_tag` 仍为 `id`、`name` 两列。
 - 确认 `t_tag_translation` 为 `id`、`locale`、`name` 三列，同一 `id` 的多个 locale 可以并存。
-- 确认缺失翻译的 `t_tag.name` 为 `Error`。
+- 确认缺少目标语言翻译的标签在语言切换后名称不变。
 - 确认外键检查结果为空。
 - 确认标签扫描完成后常见标签三种名称均已填充。
 

@@ -15,18 +15,27 @@ const syncTagNamesFromTranslations = async (
   language = config.tagLanguage
 ) => {
   const selectedLanguage = TAG_LOCALES.includes(language) ? language : 'zh-cn';
-  return database('t_tag').update({
-    name: database.raw(
-      `COALESCE((
+  return database('t_tag')
+    .whereExists(function () {
+      this.select(1)
+        .from('t_tag_translation')
+        .whereRaw('t_tag_translation.id = t_tag.id')
+        .andWhere('locale', '=', selectedLanguage)
+        .andWhere('name', '<>', '');
+    })
+    .update({
+      name: database.raw(
+        `(
         SELECT name
         FROM t_tag_translation
         WHERE t_tag_translation.id = t_tag.id
           AND locale = ?
           AND name <> ''
-      ), 'Error')`,
-      [selectedLanguage]
-    )
-  });
+        LIMIT 1
+      )`,
+        [selectedLanguage]
+      )
+    });
 };
 
 /**
@@ -78,25 +87,6 @@ const getOrCreateVaId = async (trx, name) => {
 };
 
 /**
- * 为作品关联准备标签 ID。这里只保证外键目标存在，不写入任何语言名称。
- */
-const ensureTagIds = async (trx, tags = []) => {
-  const ids = [...new Set(tags
-    .map(tag => Number(tag.id))
-    .filter(id => Number.isInteger(id) && id > 0))];
-  if (ids.length === 0) return;
-
-  const existingIds = new Set(
-    (await trx('t_tag').whereIn('id', ids).pluck('id')).map(Number)
-  );
-  const missingIds = ids.filter(id => !existingIds.has(id));
-
-  if (missingIds.length > 0) {
-    await trx('t_tag').insert(missingIds.map(id => ({ id, name: 'Error' })));
-  }
-};
-
-/**
  * Takes a work metadata object and inserts it into the database.
  * @param {Object} work Work object.
  */
@@ -129,8 +119,11 @@ const insertWorkMetadata = (work, database = knex) => database.transaction(trx =
       insert_time: knex.fn.now()
     }))
   .then(async () => {
-    await ensureTagIds(trx, work.tags);
     for (const tag of work.tags) {
+      await trx.raw('INSERT OR IGNORE INTO t_tag(id, name) VALUES (?, ?)', [
+        tag.id,
+        tag.name
+      ]);
       await trx('r_tag_work')
         .insert({
           tag_id: tag.id,
@@ -190,8 +183,11 @@ const applyWorkMetadataUpdate = async (trx, work, options = {}) => {
   if (options.includeTags || options.refreshAll) {
     // Rebuild the work's tag list from the current scrape.
     await trx('r_tag_work').where('work_id', work.id).del();
-    await ensureTagIds(trx, work.tags);
     for (const tag of work.tags) {
+      await trx.raw('INSERT OR IGNORE INTO t_tag(id, name) VALUES (?, ?)', [
+        tag.id,
+        tag.name
+      ]);
       await trx.raw('INSERT OR IGNORE INTO r_tag_work(tag_id, work_id) VALUES (?, ?)', [tag.id, work.id]);
     }
   }
@@ -677,13 +673,6 @@ const upsertTagCatalog = async (tags, database = knex) => {
   const updated = tagIds.length - inserted;
 
   await database.transaction(async trx => {
-    if (tagIds.length > 0) {
-      await trx.raw(
-        'INSERT OR IGNORE INTO t_tag(id, name) VALUES ' +
-        tagIds.map(() => '(?, ?)').join(', '),
-        tagIds.flatMap(id => [id, 'Error'])
-      );
-    }
     for (const tag of rows) {
       await trx('t_tag_translation')
         .insert(tag)

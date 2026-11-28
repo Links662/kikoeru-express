@@ -6,8 +6,7 @@ CREATE TABLE t_tag_translation (
   id INTEGER NOT NULL,
   locale TEXT NOT NULL,
   name TEXT NOT NULL DEFAULT '',
-  PRIMARY KEY (id, locale),
-  FOREIGN KEY (id) REFERENCES t_tag (id) ON UPDATE CASCADE ON DELETE CASCADE
+  PRIMARY KEY (id, locale)
 );
 
 INSERT OR IGNORE INTO t_app_setting (key, value)

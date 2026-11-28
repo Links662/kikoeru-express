@@ -107,8 +107,8 @@ describe('work metadata updates', function () {
       rate_count_detail: [{ review_point: 5, count: 8, ratio: 100 }],
       rank: [{ term: 'day', category: 'all', rank: 3, rank_date: '2026-10-18' }],
       tags: [
-        { id: 2 },
-        { id: 4 }
+        { id: 2, name: 'Fresh tag name' },
+        { id: 4, name: 'New tag' }
       ],
       vas: [{ name: 'New VA' }]
     }), { refreshAll: true, updateTime: '2026-11-28 08:30:00' });
@@ -142,7 +142,7 @@ describe('work metadata updates', function () {
       .pluck('tag_id');
     expect(tagIds).to.deep.equal([2, 4]);
     expect((await knex('t_tag').where('id', 2).first()).name).to.equal('Old tag name');
-    expect((await knex('t_tag').where('id', 4).first()).name).to.equal('Error');
+    expect((await knex('t_tag').where('id', 4).first()).name).to.equal('New tag');
 
     const newVa = await knex('t_va').where('name', 'New VA').first();
     expect(newVa.id).to.be.a('number');
@@ -168,5 +168,17 @@ describe('work metadata updates', function () {
     const work = await knex('t_work').where('id', 100).first();
     expect(work.circle_id).to.equal(1);
     expect((await knex('t_circle').where('id', 1).first()).name).to.equal('Renamed circle');
+  });
+
+  it('does not overwrite an existing tag during work refresh', async function () {
+    await knex('t_tag').insert({ id: 3, name: '现有名称' });
+
+    await applyWorkMetadataUpdate(knex, metadata({
+      tags: [{ id: 3, name: '不会覆盖' }]
+    }), { refreshAll: true });
+
+    expect((await knex('t_tag').where('id', 3).first()).name).to.equal('现有名称');
+    expect(await knex('r_tag_work').where('work_id', 100).pluck('tag_id'))
+      .to.deep.equal([3]);
   });
 });

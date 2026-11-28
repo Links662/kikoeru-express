@@ -129,9 +129,11 @@ const scrapeHtmlWorkMetadataFromDLsite = (id) => new Promise((resolve, reject) =
           return $(this).text() === GENRE;
         }).parent().children('td').children('div').children('a').each(function () {
           const tagUrl = $(this).attr('href');
+          const tagName = $(this).text().trim();
           if (tagUrl.match(/genre\/(\d{3})/)) {
             work.tags.push({
-              id: parseInt(tagUrl.match(/genre\/(\d{3})/)[1])
+              id: parseInt(tagUrl.match(/genre\/(\d{3})/)[1]),
+              name: tagName
             });
           }
         });
@@ -223,11 +225,13 @@ const scrapeProductWorkMetadataFromDLsite = (id) => new Promise((resolve, reject
       const seenTagIds = new Set();
       const tags = [];
       for (const genre of genres) {
+        const rawName = genre.name || genre.name_base;
         const tagId = Number(genre.id || genre.search_val);
+        const tagName = typeof rawName === 'string' ? rawName.trim() : '';
         if (!Number.isFinite(tagId) || seenTagIds.has(tagId)) continue;
 
         seenTagIds.add(tagId);
-        tags.push({ id: tagId });
+        tags.push({ id: tagId, name: tagName });
       }
 
       const voiceBy = item.creaters && Array.isArray(item.creaters.voice_by)

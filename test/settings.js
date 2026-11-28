@@ -134,7 +134,7 @@ describe('SQLite runtime settings', function () {
 
     await saveRuntimeSettings({ tagLanguage: 'zh-tw' }, knex);
     expect((await knex('t_tag').where('id', 14).first()).name).to.equal('情侶/戀人');
-    expect((await knex('t_tag').where('id', 15).first()).name).to.equal('Error');
+    expect((await knex('t_tag').where('id', 15).first()).name).to.equal('旧名称');
 
     await knex('t_tag_translation')
       .where({ id: 14, locale: 'zh-tw' })

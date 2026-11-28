@@ -1051,7 +1051,7 @@ const performTagScan = async () => {
   const counts = await db.upsertTagCatalog(tags);
   const message = `标签列表扫描完成: 新增 ${counts.inserted} 个，更新 ${counts.updated} 个，共计 ${tags.length} 个.`;
 
-  emitMainLog(message, { level: 'success', type: 'summary' });
+  writeConsoleLog(createLog(message, { level: 'success', type: 'summary' }));
   process.send({
     event: 'SCAN_FINISHED',
     payload: {

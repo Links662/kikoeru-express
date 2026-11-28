@@ -49,7 +49,7 @@ const createCoreTables = async () => {
       table.string('name').notNullable();
     })
     .createTable('t_tag_translation', (table) => {
-      table.integer('id').notNullable().references('id').inTable('t_tag').onUpdate('CASCADE').onDelete('CASCADE');
+      table.integer('id').notNullable();
       table.string('locale').notNullable();
       table.string('name').notNullable().defaultTo('');
       table.primary(['id', 'locale']);
