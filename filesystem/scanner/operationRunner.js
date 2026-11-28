@@ -1,6 +1,9 @@
 const db = require('../../database/db');
 const { loadRuntimeSettings } = require('../../settings');
 const { assertScanSubsystemProcess } = require('../scanWorkerGuard');
+const { installWorkerMessageHandler } = require('./workerMessages');
+
+installWorkerMessageHandler();
 
 const createScanWorkerRunner = ({
   database = db,
