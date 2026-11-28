@@ -54,7 +54,7 @@ npm test
 
 ## 数据库与迁移（强制）
 
-- 数据库文件默认在 `sqlite/db.sqlite3`；表结构基线在 `database/schema.js`，当前 `dbVersion` 为 `20261018`。
+- 数据库文件默认在 `sqlite/db.sqlite3`；表结构基线在 `database/schema.js`，当前 `dbVersion` 为 `20261128`。
 - 修改数据库结构、字幕存储或字幕扫描行为前，必须阅读：
   1. `db-migrations/README.md`
   2. 相关 SQL 文件

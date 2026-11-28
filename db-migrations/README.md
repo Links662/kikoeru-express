@@ -4,6 +4,40 @@
 
 # 数据库版本变更记录
 
+## 20261128 - 声优 ID 改为自增整数
+
+迁移文件：`20261128_integerize_va_ids.sql`
+
+执行前提：数据库已执行完 `20261125` 系列迁移。
+
+### 结构变更
+
+- `t_va.id` 从 UUID 字符串改为 `INTEGER PRIMARY KEY AUTOINCREMENT`。
+- `t_va.name` 增加唯一约束；完全相同的名称复用同一个自增 ID。
+- `r_va_work.va_id` 改为整数外键。
+- `t_favourite` 中 `field='va'` 的 `item_id` 同步改为新整数 ID 的字符串形式。
+- 新数据库基线的 `dbVersion` 更新为 `20261128`。
+
+### 行为变化
+
+- 抓取器只返回声优名称，不再自行生成 UUID。
+- 数据库按精确名称查找声优；不存在时创建自增 ID。
+- 旧 UUID 形式的收藏链接和 `vaIds` 查询参数不再兼容。
+- 完全相同名称的旧记录会合并为一个声优，相关作品和收藏会去重。
+
+### 手动迁移步骤
+
+1. 停止 Kikoeru 服务并备份 `sqlite/db.sqlite3`。
+2. 对数据库执行 `20261128_integerize_va_ids.sql`。
+3. 启动服务并确认声优列表、作品详情、收藏和筛选正常。
+
+### 验证
+
+- 执行 `PRAGMA foreign_key_check;`，结果应为空。
+- 确认 `t_va.id` 和 `r_va_work.va_id` 均为整数。
+- 确认 `staticMetadata.vaObj` 中声优 ID 已为新整数。
+- 确认 `t_favourite` 中声优收藏已完成映射。
+
 ## 20261125 - 运行时配置迁移到 SQLite
 
 迁移文件：`20261125_split_runtime_config_to_sqlite.sql`

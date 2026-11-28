@@ -1,7 +1,7 @@
 const htmlparser = require('htmlparser2');
 
 const axios = require('./axios');
-const { nameToUUID, nsfwFromSfwFlag } = require('./utils');
+const { nsfwFromSfwFlag } = require('./utils');
 const { formatRJLabel } = require('../utils/workId');
 
 /**
@@ -54,7 +54,6 @@ const scrapeWorkMetadataFromHVDB = id => new Promise((resolve, reject) => {
         onclosetag: (name) => {
           if (name === 'a' && writeTo === 'va.name') {
             work.vas[work.vas.length - 1].name = currentVaName.trim();
-            work.vas[work.vas.length - 1].id = nameToUUID(currentVaName.trim());
             writeTo = null;
           }
         },

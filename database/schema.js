@@ -1,7 +1,7 @@
 const { knex } = require('./db');
 const { runtimeDefaults } = require('../config');
 
-const dbVersion = '20261125';
+const dbVersion = '20261128';
 
 const createCoreTables = async () => {
   const exists = await knex.schema.hasTable('t_circle');
@@ -47,8 +47,8 @@ const createCoreTables = async () => {
       table.string('name').notNullable();
     })
     .createTable('t_va', (table) => {
-      table.string('id').primary();
-      table.string('name').notNullable();
+      table.increments('id');
+      table.string('name').notNullable().unique();
     })
     .createTable('r_tag_work', (table) => {
       table.integer('tag_id').references('id').inTable('t_tag').onUpdate('CASCADE').onDelete('CASCADE');
@@ -57,7 +57,7 @@ const createCoreTables = async () => {
       table.index(['work_id', 'tag_id'], 'idx_r_tag_work_work_id');
     })
     .createTable('r_va_work', (table) => {
-      table.string('va_id').references('id').inTable('t_va').onUpdate('CASCADE').onDelete('CASCADE');
+      table.integer('va_id').references('id').inTable('t_va').onUpdate('CASCADE').onDelete('CASCADE');
       table.integer('work_id').references('id').inTable('t_work').onUpdate('CASCADE').onDelete('CASCADE');
       table.primary(['va_id', 'work_id']);
       table.index(['work_id', 'va_id'], 'idx_r_va_work_work_id');

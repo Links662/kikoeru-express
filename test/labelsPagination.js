@@ -28,7 +28,7 @@ describe('label list pagination', function () {
         table.string('name');
       })
       .createTable('t_va', table => {
-        table.string('id').primary();
+        table.increments('id').primary();
         table.string('name');
       })
       .createTable('r_tag_work', table => {
@@ -36,7 +36,7 @@ describe('label list pagination', function () {
         table.integer('work_id');
       })
       .createTable('r_va_work', table => {
-        table.string('va_id');
+        table.integer('va_id');
         table.integer('work_id');
       })
       .createTable('t_favourite', table => {
@@ -55,8 +55,8 @@ describe('label list pagination', function () {
       { id: 2, name: 'Sleep' }
     ]);
     await knex('t_va').insert([
-      { id: 'v1', name: 'Alice' },
-      { id: 'v2', name: 'Bob' }
+      { id: 1, name: 'Alice' },
+      { id: 2, name: 'Bob' }
     ]);
     await knex('t_work').insert([
       { id: 1, circle_id: 1 },
@@ -69,8 +69,8 @@ describe('label list pagination', function () {
       { tag_id: 2, work_id: 2 }
     ]);
     await knex('r_va_work').insert([
-      { va_id: 'v1', work_id: 1 },
-      { va_id: 'v2', work_id: 2 }
+      { va_id: 1, work_id: 1 },
+      { va_id: 2, work_id: 2 }
     ]);
     await knex('t_favourite').insert({
       user_name: 'alice',

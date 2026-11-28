@@ -1,11 +1,7 @@
 const cheerio = require('cheerio');
 
 const axios = require('./axios');
-const {
-  nameToUUID,
-  hasLetter,
-  nsfwFromAgeRating
-} = require('./utils');
+const { hasLetter, nsfwFromAgeRating } = require('./utils');
 const scrapeWorkMetadataFromHVDB = require('./hvdb');
 const { formatRJLabel } = require('../utils/workId');
 
@@ -145,7 +141,6 @@ const scrapeHtmlWorkMetadataFromDLsite = (id, language) => new Promise((resolve,
         }).parent().children('td').children('a').each(function () {
           const vaName = $(this).text().trim();
           work.vas.push({
-            id: nameToUUID(vaName),
             name: vaName
           });
         });
@@ -240,7 +235,7 @@ const scrapeProductWorkMetadataFromDLsite = (id, language) => new Promise((resol
         if (!vaName || seenVaNames.has(vaName)) continue;
 
         seenVaNames.add(vaName);
-        vas.push({ id: nameToUUID(vaName), name: vaName });
+        vas.push({ name: vaName });
       }
 
       const detail = item.rate_count_detail;

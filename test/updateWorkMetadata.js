@@ -41,8 +41,8 @@ describe('work metadata updates', function () {
         table.string('name').notNullable();
       })
       .createTable('t_va', table => {
-        table.string('id').primary();
-        table.string('name').notNullable();
+        table.increments('id').primary();
+        table.string('name').notNullable().unique();
       })
       .createTable('r_tag_work', table => {
         table.integer('tag_id');
@@ -50,7 +50,7 @@ describe('work metadata updates', function () {
         table.primary(['tag_id', 'work_id']);
       })
       .createTable('r_va_work', table => {
-        table.string('va_id');
+        table.integer('va_id');
         table.integer('work_id');
         table.primary(['va_id', 'work_id']);
       });
@@ -77,8 +77,8 @@ describe('work metadata updates', function () {
       { tag_id: 1, work_id: 100 },
       { tag_id: 2, work_id: 100 }
     ]);
-    await knex('t_va').insert({ id: 'old-va', name: 'Old VA' });
-    await knex('r_va_work').insert({ va_id: 'old-va', work_id: 100 });
+    await knex('t_va').insert({ id: 1, name: 'Old VA' });
+    await knex('r_va_work').insert({ va_id: 1, work_id: 100 });
   });
 
   afterEach(async function () {
@@ -109,7 +109,7 @@ describe('work metadata updates', function () {
         { id: 2, name: 'Fresh tag name' },
         { id: 4, name: 'New tag' }
       ],
-      vas: [{ id: 'new-va', name: 'New VA' }]
+      vas: [{ name: 'New VA' }]
     }), { refreshAll: true });
 
     const work = await knex('t_work').where('id', 100).first();
@@ -142,8 +142,20 @@ describe('work metadata updates', function () {
     expect((await knex('t_tag').where('id', 2).first()).name).to.equal('Fresh tag name');
     expect((await knex('t_tag').where('id', 4).first()).name).to.equal('New tag');
 
+    const newVa = await knex('t_va').where('name', 'New VA').first();
+    expect(newVa.id).to.be.a('number');
     const vaIds = await knex('r_va_work').where('work_id', 100).pluck('va_id');
-    expect(vaIds).to.deep.equal(['new-va']);
+    expect(vaIds).to.deep.equal([newVa.id]);
+  });
+
+  it('reuses the existing voice actor ID by exact name', async function () {
+    await applyWorkMetadataUpdate(knex, metadata({
+      vas: [{ name: 'Old VA' }]
+    }), { refreshAll: true });
+
+    const vaIds = await knex('r_va_work').where('work_id', 100).pluck('va_id');
+    expect(vaIds).to.deep.equal([1]);
+    expect(await knex('t_va').count({ count: '*' }).first()).to.deep.equal({ count: 1 });
   });
 
   it('renames the existing circle when the circle id is unchanged', async function () {

@@ -31,10 +31,36 @@ const applyWorkFilters = (query, { nsfw, subtitle } = {}) => {
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
 /**
+ * 按精确名称查找或创建声优，并返回数据库分配的短整数 ID。
+ */
+const getOrCreateVaId = async (trx, name) => {
+  const normalizedName = typeof name === 'string' ? name.trim() : '';
+  if (!normalizedName) return null;
+
+  const existing = await trx('t_va')
+    .select('id')
+    .where('name', '=', normalizedName)
+    .first();
+  if (existing) return existing.id;
+
+  try {
+    const [id] = await trx('t_va').insert({ name: normalizedName });
+    return id;
+  } catch (error) {
+    if (!error || !String(error.code).startsWith('SQLITE_CONSTRAINT')) throw error;
+    const concurrent = await trx('t_va')
+      .select('id')
+      .where('name', '=', normalizedName)
+      .first();
+    return concurrent ? concurrent.id : null;
+  }
+};
+
+/**
  * Takes a work metadata object and inserts it into the database.
  * @param {Object} work Work object.
  */
-const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
+const insertWorkMetadata = (work, database = knex) => database.transaction(trx => trx.raw(
   trx('t_circle')
     .insert({
       id: work.circle.id,
@@ -79,17 +105,12 @@ const insertWorkMetadata = work => knex.transaction(trx => trx.raw(
     }
 
     for (const va of work.vas) {
-      await trx.raw(
-        trx('t_va')
-          .insert({
-            id: va.id,
-            name: va.name,
-          }).toString().replace('insert', 'insert or ignore'),
-      );
+      const vaId = await getOrCreateVaId(trx, va.name);
+      if (vaId === null) continue;
       await trx.raw(
         trx('r_va_work')
           .insert({
-            va_id: va.id,
+            va_id: vaId,
             work_id: work.id,
           }).toString().replace('insert', 'insert or ignore'),
       );
@@ -127,8 +148,9 @@ const applyWorkMetadataUpdate = async (trx, work, options = {}) => {
   if (options.includeVA || options.refreshAll) {
     await trx('r_va_work').where('work_id', work.id).del();
     for (const va of work.vas) {
-      await trx.raw('INSERT OR IGNORE INTO t_va(id, name) VALUES (?, ?)', [va.id, va.name]);
-      await trx.raw('INSERT OR IGNORE INTO r_va_work(va_id, work_id) VALUES (?, ?)', [va.id, work.id]);
+      const vaId = await getOrCreateVaId(trx, va.name);
+      if (vaId === null) continue;
+      await trx.raw('INSERT OR IGNORE INTO r_va_work(va_id, work_id) VALUES (?, ?)', [vaId, work.id]);
     }
   }
   if (options.includeTags || options.refreshAll) {
@@ -843,7 +865,7 @@ const setFavourite = async ({username, field = 'circle', id, favourite} = {}) =>
   const target = await knex(`t_${field}`).where('id', '=', id).first();
   if (!target) return false;
 
-  // t_circle/t_tag 的 id 是整数，t_va 的 id 是字符串，统一按字符串存
+  // 各实体 ID 均统一按字符串写入收藏表
   const itemId = String(id);
 
   if (favourite) {

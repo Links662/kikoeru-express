@@ -50,7 +50,7 @@ describe('work filters', function () {
         table.string('name');
       })
       .createTable('t_va', table => {
-        table.string('id');
+        table.increments('id');
         table.string('name');
       })
       .createTable('r_tag_work', table => {
@@ -58,7 +58,7 @@ describe('work filters', function () {
         table.integer('work_id');
       })
       .createTable('r_va_work', table => {
-        table.string('va_id');
+        table.integer('va_id');
         table.integer('work_id');
       });
 
@@ -72,8 +72,8 @@ describe('work filters', function () {
       { id: 3, name: 'voice' }
     ]);
     await knex('t_va').insert([
-      { id: 'v1', name: 'alice' },
-      { id: 'v2', name: 'bob' }
+      { id: 1, name: 'alice' },
+      { id: 2, name: 'bob' }
     ]);
     await knex('staticMetadata').insert([
       { id: 1, title: 'Alpha sleep', circle_id: 1, nsfw: false, subtitle: false },
@@ -90,10 +90,10 @@ describe('work filters', function () {
       { tag_id: 3, work_id: 4 }
     ]);
     await knex('r_va_work').insert([
-      { va_id: 'v1', work_id: 1 },
-      { va_id: 'v2', work_id: 2 },
-      { va_id: 'v1', work_id: 3 },
-      { va_id: 'v2', work_id: 4 }
+      { va_id: 1, work_id: 1 },
+      { va_id: 2, work_id: 2 },
+      { va_id: 1, work_id: 3 },
+      { va_id: 2, work_id: 4 }
     ]);
   });
 
@@ -150,14 +150,14 @@ describe('work filters', function () {
   });
 
   it('filters multiple VAs with OR semantics', async function () {
-    expect(await getConditionIds({ vaIds: ['v1', 'v2'] })).to.deep.equal([1, 2, 3, 4]);
+    expect(await getConditionIds({ vaIds: [1, 2] })).to.deep.equal([1, 2, 3, 4]);
   });
 
   it('combines different condition groups with AND semantics', async function () {
     expect(await getConditionIds({
       circleIds: [1],
       tagIds: [2],
-      vaIds: ['v1']
+      vaIds: [1]
     })).to.deep.equal([1]);
   });
 
@@ -165,7 +165,7 @@ describe('work filters', function () {
     expect(await getConditionIds({
       keyword: 'sleep',
       circleIds: [2],
-      vaIds: ['v2']
+      vaIds: [2]
     })).to.deep.equal([4]);
   });
 

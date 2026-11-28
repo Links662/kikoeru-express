@@ -68,7 +68,7 @@ const workListValidators = () => [
   query('subtitle').optional({ nullable: true }).isIn(['true', 'false']),
   conditionListValidator('circleIds', true),
   conditionListValidator('tagIds', true),
-  conditionListValidator('vaIds', false),
+  conditionListValidator('vaIds', true),
   query('keyword').optional({ nullable: true }).isString().trim().isLength({ max: 200 })
 ];
 
@@ -275,7 +275,7 @@ router.get('/works',
 router.get('/work-filter-labels',
   conditionListValidator('circleIds', true),
   conditionListValidator('tagIds', true),
-  conditionListValidator('vaIds', false),
+  conditionListValidator('vaIds', true),
   validateWorkConditionCount,
   async (req, res, next) => {
     if (!isValidRequest(req, res)) return;
