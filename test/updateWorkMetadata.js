@@ -107,8 +107,8 @@ describe('work metadata updates', function () {
       rate_count_detail: [{ review_point: 5, count: 8, ratio: 100 }],
       rank: [{ term: 'day', category: 'all', rank: 3, rank_date: '2026-10-18' }],
       tags: [
-        { id: 2, name: 'Fresh tag name' },
-        { id: 4, name: 'New tag' }
+        { id: 2 },
+        { id: 4 }
       ],
       vas: [{ name: 'New VA' }]
     }), { refreshAll: true, updateTime: '2026-11-28 08:30:00' });
@@ -141,8 +141,8 @@ describe('work metadata updates', function () {
       .orderBy('tag_id')
       .pluck('tag_id');
     expect(tagIds).to.deep.equal([2, 4]);
-    expect((await knex('t_tag').where('id', 2).first()).name).to.equal('Fresh tag name');
-    expect((await knex('t_tag').where('id', 4).first()).name).to.equal('New tag');
+    expect((await knex('t_tag').where('id', 2).first()).name).to.equal('Old tag name');
+    expect((await knex('t_tag').where('id', 4).first()).name).to.equal('Error');
 
     const newVa = await knex('t_va').where('name', 'New VA').first();
     expect(newVa.id).to.be.a('number');

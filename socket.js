@@ -110,6 +110,10 @@ const initSocket = (server) => {
       scannerState.startScan('update');
     });
 
+    onAdministratorEvent('PERFORM_TAG_SCAN', () => {
+      scannerState.startScan('tags');
+    });
+
     onAdministratorEvent('PERFORM_SUBTITLE_SCAN', () => {
       scannerState.startScan('subtitles');
     });

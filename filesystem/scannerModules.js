@@ -6,6 +6,7 @@ const LimitPromise = require('limit-promise');
 const axios = require('../scraper/axios.js');
 const {
   scrapeWorkMetadataFromDLsite,
+  scrapeTagCatalogFromDLsite,
   isDlsiteBlockedError
 } = require('../scraper/dlsite');
 const db = require('../database/db');
@@ -198,13 +199,12 @@ const uniqueArr = (arr) => {
  * @param {number} id work id
  * @param {number} rootFolderId 根目录稳定 ID
  * @param {string} dir 音声文件夹相对路径
- * @param {string} tagLanguage 标签语言，'ja-JP', 'zh-TW' or 'zh-CN'，默认'zh-CN'
  */
-const getMetadata = (id, rootFolderId, dir, tagLanguage) => {
+const getMetadata = (id, rootFolderId, dir) => {
   const rjLabel = formatRJLabel(id);
   emitTaskLog(`[${rjLabel}] 从 DLSite 抓取元数据...`, id, { type: 'progress' });
   
-  return scrapeWorkMetadataFromDLsite(id, tagLanguage)
+  return scrapeWorkMetadataFromDLsite(id)
     .then((metadata) => {
       const rootFolder = findRootFolder({ root_folder_id: rootFolderId });
       const absolutePath = path.join(rootFolder.path, dir);
@@ -628,8 +628,7 @@ const processFolder = async (folder, options = {}) => {
     const result = await getMetadata(
       folder.id,
       folder.rootFolderId,
-      folder.relativePath,
-      config.tagLanguage
+      folder.relativePath
     );
 
     if (result === 'failed') return 'failed';
@@ -939,7 +938,7 @@ const performScan = async (options = {}) => {
  * @param {options = {}} options includeVA, includeTags
  */
 const updateMetadata = (id, options = {}) => {
-  let scrapeProcessor = () => scrapeWorkMetadataFromDLsite(id, config.tagLanguage);
+  let scrapeProcessor = () => scrapeWorkMetadataFromDLsite(id);
 
   const rjLabel = formatRJLabel(id);
   addTask(id);
@@ -1044,6 +1043,25 @@ const performSubtitleScan = async () => {
   process.exit(counts.failed ? 1 : 0);
 };
 
+const performTagScan = async () => {
+  emitMainLog('扫描 DLsite 标签列表', { type: 'phase' });
+  emitMainLog('正在抓取日文、简体中文和繁体中文标签...', { type: 'progress' });
+
+  const tags = await scrapeTagCatalogFromDLsite();
+  const counts = await db.upsertTagCatalog(tags);
+  const message = `标签列表扫描完成: 新增 ${counts.inserted} 个，更新 ${counts.updated} 个，共计 ${tags.length} 个.`;
+
+  emitMainLog(message, { level: 'success', type: 'summary' });
+  process.send({
+    event: 'SCAN_FINISHED',
+    payload: {
+      message,
+      level: 'success'
+    }
+  });
+  db.knex.destroy();
+};
+
 const performUpdate = async (options = null) => {
   emitMainLog('刷新作品元数据', { type: 'phase' });
   const works = await db.getWorksDueForMetadataRefresh({
@@ -1134,6 +1152,7 @@ const refreshWorks = async (works, limiter, processor) => {
 module.exports = {
   performScan,
   performUpdate,
+  performTagScan,
   performSubtitleScan,
   planMovedWorkRemap,
   // 下面几个主要给测试用（封面维护的核心逻辑，不碰数据库）

@@ -4,6 +4,40 @@
 
 # 数据库版本变更记录
 
+## 20261128 - 标签多语言
+
+迁移文件：`20261128_add_tag_translations.sql`
+
+执行前提：数据库已执行完 `20261125` 与 `20261128` 系列迁移。
+
+### 结构变更
+
+- 保留原 `t_tag(id, name)` 结构和 `r_tag_work` 外键。
+- 新增 `t_tag_translation(id, locale, name)`，主键为 `(id, locale)`。
+- 每个标签最多保存 `ja-jp`、`zh-cn`、`zh-tw` 三行；空名称使用空字符串。
+- 标签列表扫描更新 `t_tag_translation` 后，会按当前全局语言刷新 `t_tag.name`。
+- 全局标签语言实际变化时，也会将该 locale 的名称批量写入 `t_tag.name`。
+- 无法取得当前语言翻译时，`t_tag.name` 固定写为 `Error`。
+- 旧标签名称因无法可靠判断语言，不自动迁移；升级后通过标签列表扫描重建名称。
+- `staticMetadata.tagObj` 同时输出三种语言名称。
+- 保留 `t_app_setting.tagLanguage` 作为全站标签显示语言，默认 `zh-cn`。
+
+### 使用步骤
+
+1. 停止 Kikoeru 服务并备份 `sqlite/db.sqlite3`。
+2. 对数据库执行 `20261128_add_tag_translations.sql`。
+3. 启动服务，在管理后台的扫描页执行一次“扫描标签列表”。
+4. 确认标签列表与作品卡片可以在简、繁、日三种名称之间即时切换。
+
+### 验证
+
+- 执行 `PRAGMA foreign_key_check;`，结果应为空。
+- 确认 `t_tag` 仍为 `id`、`name` 两列。
+- 确认 `t_tag_translation` 为 `id`、`locale`、`name` 三列，同一 `id` 的多个 locale 可以并存。
+- 确认缺失翻译的 `t_tag.name` 为 `Error`。
+- 确认外键检查结果为空。
+- 确认标签扫描完成后常见标签三种名称均已填充。
+
 ## 20261128 - 作品元数据刷新时间
 
 迁移文件：`20261128_add_work_update_time.sql`

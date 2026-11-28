@@ -51,8 +51,8 @@ describe('label list pagination', function () {
       { id: 3, name: 'Gamma' }
     ]);
     await knex('t_tag').insert([
-      { id: 1, name: 'Action' },
-      { id: 2, name: 'Sleep' }
+      { id: 1, name: '动作' },
+      { id: 2, name: '睡眠' }
     ]);
     await knex('t_va').insert([
       { id: 1, name: 'Alice' },
@@ -142,7 +142,7 @@ describe('label list pagination', function () {
     const tags = await getLabelsPage({
       field: 'tag',
       username: 'alice',
-      keyword: 'sle',
+      keyword: '睡',
       sortBy: 'name',
       sort: 'asc',
       page: 1,
@@ -161,8 +161,25 @@ describe('label list pagination', function () {
     });
 
     expect(tags.totalCount).to.equal(1);
-    expect(tags.items.map(item => item.name)).to.deep.equal(['Sleep']);
+    expect(tags.items.map(item => item.name)).to.deep.equal(['睡眠']);
     expect(vas.totalCount).to.equal(1);
     expect(vas.items.map(item => item.name)).to.deep.equal(['Bob']);
+  });
+
+  it('searches and sorts tags using the current t_tag names', async function () {
+    await knex('t_tag').where('id', 1).update({ name: '動作' });
+    const tags = await getLabelsPage({
+      field: 'tag',
+      username: 'alice',
+      keyword: '動作',
+      sortBy: 'name',
+      sort: 'asc',
+      page: 1,
+      pageSize: 10,
+      database: knex
+    });
+
+    expect(tags.totalCount).to.equal(1);
+    expect(tags.items[0]).to.include({ id: 1, name: '動作' });
   });
 });

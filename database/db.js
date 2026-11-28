@@ -8,6 +8,27 @@ const connEnv = 'development';
 const conn = require('./knexfile')[connEnv]
 const knex = require('knex')(conn);
 
+const TAG_LOCALES = Object.freeze(['ja-jp', 'zh-cn', 'zh-tw']);
+
+const syncTagNamesFromTranslations = async (
+  database = knex,
+  language = config.tagLanguage
+) => {
+  const selectedLanguage = TAG_LOCALES.includes(language) ? language : 'zh-cn';
+  return database('t_tag').update({
+    name: database.raw(
+      `COALESCE((
+        SELECT name
+        FROM t_tag_translation
+        WHERE t_tag_translation.id = t_tag.id
+          AND locale = ?
+          AND name <> ''
+      ), 'Error')`,
+      [selectedLanguage]
+    )
+  });
+};
+
 /**
  * 给作品查询附加年龄分级和字幕筛选。
  * nsfw / subtitle 为 undefined 时表示不筛选。
@@ -57,6 +78,25 @@ const getOrCreateVaId = async (trx, name) => {
 };
 
 /**
+ * 为作品关联准备标签 ID。这里只保证外键目标存在，不写入任何语言名称。
+ */
+const ensureTagIds = async (trx, tags = []) => {
+  const ids = [...new Set(tags
+    .map(tag => Number(tag.id))
+    .filter(id => Number.isInteger(id) && id > 0))];
+  if (ids.length === 0) return;
+
+  const existingIds = new Set(
+    (await trx('t_tag').whereIn('id', ids).pluck('id')).map(Number)
+  );
+  const missingIds = ids.filter(id => !existingIds.has(id));
+
+  if (missingIds.length > 0) {
+    await trx('t_tag').insert(missingIds.map(id => ({ id, name: 'Error' })));
+  }
+};
+
+/**
  * Takes a work metadata object and inserts it into the database.
  * @param {Object} work Work object.
  */
@@ -89,14 +129,8 @@ const insertWorkMetadata = (work, database = knex) => database.transaction(trx =
       insert_time: knex.fn.now()
     }))
   .then(async () => {
+    await ensureTagIds(trx, work.tags);
     for (const tag of work.tags) {
-      await trx.raw(
-        trx('t_tag')
-          .insert({
-            id: tag.id,
-            name: tag.name,
-          }).toString().replace('insert', 'insert or ignore'),
-      );
       await trx('r_tag_work')
         .insert({
           tag_id: tag.id,
@@ -116,7 +150,6 @@ const insertWorkMetadata = (work, database = knex) => database.transaction(trx =
       );
     }
 
-    return trx;
   }));
 
 /**
@@ -157,12 +190,8 @@ const applyWorkMetadataUpdate = async (trx, work, options = {}) => {
   if (options.includeTags || options.refreshAll) {
     // Rebuild the work's tag list from the current scrape.
     await trx('r_tag_work').where('work_id', work.id).del();
+    await ensureTagIds(trx, work.tags);
     for (const tag of work.tags) {
-      await trx.raw('INSERT OR IGNORE INTO t_tag(id, name) VALUES (?, ?)', [tag.id, tag.name]);
-      await trx('t_tag')
-        .where('id', '=', tag.id)
-        .andWhere('name', '<>', tag.name)
-        .update({ name: tag.name });
       await trx.raw('INSERT OR IGNORE INTO r_tag_work(tag_id, work_id) VALUES (?, ?)', [tag.id, work.id]);
     }
   }
@@ -621,6 +650,53 @@ const getLabelsPage = async ({
 };
 
 /**
+ * 将 DLsite 标签目录合并到 t_tag。
+ * tags 为 { id, locale, name } 形式的翻译行。
+ */
+const upsertTagCatalog = async (tags, database = knex) => {
+  if (!Array.isArray(tags)) throw new Error('标签目录格式无效');
+
+  const rows = tags
+    .map(tag => ({
+      id: Number(tag.id),
+      locale: tag.locale,
+      name: typeof tag.name === 'string' ? tag.name.trim() : ''
+    }))
+    .filter(tag => (
+      Number.isInteger(tag.id) &&
+      tag.id > 0 &&
+      TAG_LOCALES.includes(tag.locale) &&
+      tag.name
+    ));
+  const tagIds = [...new Set(rows.map(tag => tag.id))];
+  const existingIds = new Set(
+    (await database('t_tag_translation').distinct().whereIn('id', tagIds).pluck('id'))
+      .map(Number)
+  );
+  const inserted = tagIds.filter(id => !existingIds.has(id)).length;
+  const updated = tagIds.length - inserted;
+
+  await database.transaction(async trx => {
+    if (tagIds.length > 0) {
+      await trx.raw(
+        'INSERT OR IGNORE INTO t_tag(id, name) VALUES ' +
+        tagIds.map(() => '(?, ?)').join(', '),
+        tagIds.flatMap(id => [id, 'Error'])
+      );
+    }
+    for (const tag of rows) {
+      await trx('t_tag_translation')
+        .insert(tag)
+        .onConflict(['id', 'locale'])
+        .merge(['name']);
+    }
+    await syncTagNamesFromTranslations(trx, config.tagLanguage);
+  });
+
+  return { inserted, updated };
+};
+
+/**
  * 获取每个社团/标签/声优最近发售的若干作品 id（列表页展示 RJ 号用）
  * @param {String} field ['circle', 'tag', 'va'] 中的一个
  * @param {Number} limit 每个条目最多取多少条
@@ -1011,6 +1087,8 @@ module.exports = {
   cleanupOrphanEntities,
   getWorksByConditions, getWorkConditionLabels,
   applyWorkMetadataUpdate, updateWorkMetadata, getWorksDueForMetadataRefresh,
+  upsertTagCatalog,
+  syncTagNamesFromTranslations,
   updateWorkSubtitle,
   getLabels, getLabelsPage, getMetadata, getFavourites, setFavourite,
   getRecentWorkIds,

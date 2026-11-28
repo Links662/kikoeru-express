@@ -6,12 +6,11 @@ const scrapeWorkMetadataFromHVDB = require('./hvdb');
 const { formatRJLabel } = require('../utils/workId');
 const { normalizeVoiceActorName } = require('../utils/voiceActorName');
 
-const DEFAULT_TAG_LANGUAGE = 'zh-CN';
 const STATIC_METADATA_SOURCES = {
   PRODUCT: 'product',
   HTML: 'html'
 };
-const SUPPORTED_TAG_LANGUAGES = new Set(['ja-JP', 'zh-TW', 'zh-CN']);
+const TAG_CATALOG_LANGUAGES = ['ja-jp', 'zh-cn', 'zh-tw'];
 
 const dlsiteBlockedError = message => Object.assign(new Error(message), {
   code: 'DLSITE_BLOCKED',
@@ -47,53 +46,23 @@ const requestError = (error, url, label) => {
   return wrapped;
 };
 
-const getTagLanguage = (language) => {
-  const value = language || DEFAULT_TAG_LANGUAGE;
-  if (!SUPPORTED_TAG_LANGUAGES.has(value)) {
-    throw new Error(`Unsupported DLsite tag language: ${value}.`);
-  }
-  return value;
-};
-
 /**
  * Scrapes static work metadata from public DLsite page HTML.
  * @param {number} id Work id.
- * @param {String} language 标签语言，'ja-JP', 'zh-TW' or 'zh-CN'，默认'zh-CN'
  */
-const scrapeHtmlWorkMetadataFromDLsite = (id, language) => new Promise((resolve, reject) => {
+const scrapeHtmlWorkMetadataFromDLsite = (id) => new Promise((resolve, reject) => {
   const rjLabel = formatRJLabel(id);
   const url = `https://www.dlsite.com/maniax/work/=/product_id/${rjLabel}.html`;
-  const tagLanguage = getTagLanguage(language);
 
   // 抓源缺少年龄字段时按 R18 处理，保证交给持久层的元数据字段完整。
   const work = { id, nsfw: true, tags: [], vas: [] };
   let AGE_RATINGS, VA, GENRE, RELEASE, SERIES, COOKIE_LOCALE;
-  switch (tagLanguage) {
-    case 'ja-JP':
-      COOKIE_LOCALE = 'locale=ja-jp';
-      AGE_RATINGS = '年齢指定';
-      GENRE = 'ジャンル';
-      VA = '声優';
-      RELEASE = '販売日';
-      SERIES = 'シリーズ名';
-      break;
-    case 'zh-TW':
-      COOKIE_LOCALE = 'locale=zh-tw';
-      AGE_RATINGS = '年齡指定';
-      GENRE = '分類';
-      VA = '聲優';
-      RELEASE = '販賣日';
-      SERIES = '系列名';
-      break;
-    case 'zh-CN':
-      COOKIE_LOCALE = 'locale=zh-cn';
-      AGE_RATINGS = '年龄指定';
-      GENRE = '分类';
-      VA = '声优';
-      RELEASE = '贩卖日';
-      SERIES = '系列名';
-      break;
-  }
+  COOKIE_LOCALE = 'locale=ja-jp';
+  AGE_RATINGS = '年齢指定';
+  GENRE = 'ジャンル';
+  VA = '声優';
+  RELEASE = '販売日';
+  SERIES = 'シリーズ名';
 
   axios.retryGet(url, {
     retry: {},
@@ -160,11 +129,9 @@ const scrapeHtmlWorkMetadataFromDLsite = (id, language) => new Promise((resolve,
           return $(this).text() === GENRE;
         }).parent().children('td').children('div').children('a').each(function () {
           const tagUrl = $(this).attr('href');
-          const tagName = $(this).text();
           if (tagUrl.match(/genre\/(\d{3})/)) {
             work.tags.push({
-              id: parseInt(tagUrl.match(/genre\/(\d{3})/)[1]),
-              name: tagName
+              id: parseInt(tagUrl.match(/genre\/(\d{3})/)[1])
             });
           }
         });
@@ -202,12 +169,11 @@ const scrapeHtmlWorkMetadataFromDLsite = (id, language) => new Promise((resolve,
 /**
  * 从 public product.json 抓取静态元数据。
  * @param {number} id Work id.
- * @param {String} language 标签语言，'ja-JP', 'zh-TW' or 'zh-CN'，默认'zh-CN'
  */
-const scrapeProductWorkMetadataFromDLsite = (id, language) => new Promise((resolve, reject) => {
+const scrapeProductWorkMetadataFromDLsite = (id) => new Promise((resolve, reject) => {
   const rjLabel = formatRJLabel(id);
-  const locale = getTagLanguage(language);
-  const url = `https://www.dlsite.com/maniax/api/=/product.json?workno=${rjLabel}&locale=${locale}`;
+  // product.json 只稳定提供日文和英文元数据；中文标签由分类页同步到 t_tag。
+  const url = `https://www.dlsite.com/maniax/api/=/product.json?workno=${rjLabel}&locale=ja_JP`;
 
   axios.retryGet(url, { retry: {} })
     .then((response) => {
@@ -257,13 +223,11 @@ const scrapeProductWorkMetadataFromDLsite = (id, language) => new Promise((resol
       const seenTagIds = new Set();
       const tags = [];
       for (const genre of genres) {
-        const rawName = genre.name || genre.name_base;
         const tagId = Number(genre.id || genre.search_val);
-        const tagName = typeof rawName === 'string' ? rawName.trim() : '';
-        if (!Number.isFinite(tagId) || !tagName || seenTagIds.has(tagId)) continue;
+        if (!Number.isFinite(tagId) || seenTagIds.has(tagId)) continue;
 
         seenTagIds.add(tagId);
-        tags.push({ id: tagId, name: tagName });
+        tags.push({ id: tagId });
       }
 
       const voiceBy = item.creaters && Array.isArray(item.creaters.voice_by)
@@ -384,6 +348,62 @@ const scrapeProductWorkMetadataFromDLsite = (id, language) => new Promise((resol
 });
 
 /**
+ * 抓取 DLsite 分类页中的全量标签目录。
+ * 页面会按 locale 返回官方本地化名称，适合按标签 ID 合并后落库。
+ * @param {String} locale DLsite locale，例如 zh-cn、zh-tw、ja-jp
+ * @returns {Promise<Map<number, string>>}
+ */
+const scrapeTagListFromDLsite = async (locale) => {
+  const url = `https://www.dlsite.com/maniax/genre/list/?locale=${encodeURIComponent(locale)}`;
+  const response = await axios.retryGet(url, {
+    retry: {},
+    headers: { "cookie": `locale=${locale}` }
+  });
+
+  if (typeof response.data !== 'string') {
+    throw new Error(`Couldn't parse DLsite tag catalog for ${locale}.`);
+  }
+
+  const $ = cheerio.load(response.data);
+  const tags = new Map();
+  $('.versatility_linklist_item a[href*="/works/genre/=/genre/"]').each(function () {
+    const tagUrl = $(this).attr('href') || '';
+    const tagIdMatch = tagUrl.match(/\/genre\/(\d+)/);
+    const tagId = tagIdMatch ? Number(tagIdMatch[1]) : NaN;
+    const tagName = $(this).text()
+      .trim()
+      .replace(/\s*\(\d[\d,]*\)$/, '')
+      .trim();
+    if (!Number.isInteger(tagId) || tagId <= 0 || !tagName || tags.has(tagId)) return;
+    tags.set(tagId, tagName);
+  });
+
+  if (tags.size === 0) {
+    throw isDlsiteChallengeResponse(response.data)
+      ? dlsiteBlockedError(`DLsite returned a challenge page for ${locale} tags.`)
+      : new Error(`Couldn't parse any DLsite tags for ${locale}.`);
+  }
+  return tags;
+};
+
+/**
+ * 依次抓取三种语言并返回 t_tag 使用的翻译行。
+ * @returns {Promise<Array<{id: number, locale: string, name: string}>>}
+ */
+const scrapeTagCatalogFromDLsite = async () => {
+  const catalog = [];
+  for (const locale of TAG_CATALOG_LANGUAGES) {
+    const tags = await scrapeTagListFromDLsite(locale);
+    for (const [id, name] of tags) {
+      catalog.push({ id, locale, name });
+    }
+  }
+  return catalog.sort((left, right) => (
+    left.id - right.id || left.locale.localeCompare(right.locale)
+  ));
+};
+
+/**
  * Requests dynamic work metadata from public DLsite API.
  * @param {number} id Work id.
  */
@@ -457,10 +477,9 @@ const fillMissingVasFromHVDB = async (id, work) => {
 /**
  * Scrapes work metadata from DLsite.
  * @param {number} id Work id.
- * @param {String} language 标签语言，'ja-JP', 'zh-TW' or 'zh-CN'，默认'zh-CN'
  * @param {Object} options { source: 'product' | 'html' }，默认使用 product.json
  */
-const scrapeWorkMetadataFromDLsite = (id, language, options = {}) => {
+const scrapeWorkMetadataFromDLsite = (id, options = {}) => {
   const rjLabel = formatRJLabel(id);
   const source = options.source || STATIC_METADATA_SOURCES.PRODUCT;
   let scrapeStaticMetadata;
@@ -476,7 +495,7 @@ const scrapeWorkMetadataFromDLsite = (id, language, options = {}) => {
       return Promise.reject(new Error(`Unknown DLsite metadata source: ${source}.`));
   }
 
-  return scrapeStaticMetadata(id, language)
+  return scrapeStaticMetadata(id)
     .then(staticMetadata => scrapeDynamicWorkMetadataFromDLsite(id)
       .catch((error) => {
         if (isDlsiteBlockedError(error)) throw error;
@@ -493,6 +512,8 @@ module.exports = {
   scrapeWorkMetadataFromDLsite,
   scrapeHtmlWorkMetadataFromDLsite,
   scrapeProductWorkMetadataFromDLsite,
+  scrapeTagListFromDLsite,
+  scrapeTagCatalogFromDLsite,
   isDlsiteBlockedError,
   isDlsiteChallengeResponse
 };

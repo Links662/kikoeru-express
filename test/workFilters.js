@@ -67,7 +67,7 @@ describe('work filters', function () {
       { id: 2, name: 'circle two' }
     ]);
     await knex('t_tag').insert([
-      { id: 1, name: 'sleep' },
+      { id: 1, name: '睡眠' },
       { id: 2, name: 'asmr' },
       { id: 3, name: 'voice' }
     ]);
@@ -173,6 +173,7 @@ describe('work filters', function () {
     expect(await getConditionIds({ keyword: 'Alpha' })).to.deep.equal([1]);
     expect(await getConditionIds({ keyword: 'circle two' })).to.deep.equal([3, 4]);
     expect(await getConditionIds({ keyword: 'sleep' })).to.deep.equal([1, 4]);
+    expect(await getConditionIds({ keyword: '睡眠' })).to.deep.equal([1, 4]);
     expect(await getConditionIds({ keyword: 'alice' })).to.deep.equal([1, 3]);
   });
 

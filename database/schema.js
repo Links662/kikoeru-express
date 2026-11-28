@@ -48,6 +48,12 @@ const createCoreTables = async () => {
       table.increments();
       table.string('name').notNullable();
     })
+    .createTable('t_tag_translation', (table) => {
+      table.integer('id').notNullable().references('id').inTable('t_tag').onUpdate('CASCADE').onDelete('CASCADE');
+      table.string('locale').notNullable();
+      table.string('name').notNullable().defaultTo('');
+      table.primary(['id', 'locale']);
+    })
     .createTable('t_va', (table) => {
       table.increments('id');
       table.string('name').notNullable().unique();

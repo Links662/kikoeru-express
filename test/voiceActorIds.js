@@ -63,7 +63,7 @@ describe('voice actor integer IDs', function () {
     await knex.destroy();
   });
 
-  const metadata = (id, vas) => ({
+  const metadata = (id, vas, tags = []) => ({
     id,
     rootFolderId: 1,
     dir: `RJ${String(id).padStart(6, '0')}`,
@@ -72,7 +72,7 @@ describe('voice actor integer IDs', function () {
     nsfw: false,
     subtitle: false,
     release: '2026-11-28',
-    tags: [],
+    tags,
     vas
   });
 
@@ -97,5 +97,23 @@ describe('voice actor integer IDs', function () {
 
     const works = await knex('t_work').select('update_time');
     works.forEach(work => expect(work.update_time).to.match(/^\d{4}-\d{2}-\d{2} /));
+  });
+
+  it('keeps tag relations without writing names when tag ids are missing', async function () {
+    await insertWorkMetadata(metadata(102, [], [
+      { id: 77 },
+      { id: 78 }
+    ]), knex);
+
+    expect(await knex('r_tag_work').where('work_id', 102).orderBy('tag_id').pluck('tag_id'))
+      .to.deep.equal([77, 78]);
+    expect(await knex('t_tag')
+      .whereIn('id', [77, 78])
+      .orderBy('id')
+      .select('id', 'name'))
+      .to.deep.equal([
+        { id: 77, name: 'Error' },
+        { id: 78, name: 'Error' }
+      ]);
   });
 });

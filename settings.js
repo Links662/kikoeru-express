@@ -5,6 +5,7 @@ const {
   setRuntimeConfig,
   normalizeRootFolders
 } = require('./config');
+const { syncTagNamesFromTranslations } = require('./database/db');
 
 const SETTING_TABLE = 't_app_setting';
 const ROOT_FOLDER_TABLE = 't_root_folder';
@@ -71,6 +72,7 @@ const saveRuntimeSettings = async (newSettings, knex = getDatabaseKnex()) => {
     : null;
 
   let savedRootFolders = null;
+  const previousTagLanguage = config.tagLanguage;
 
   await knex.transaction(async trx => {
     for (const [key, value] of Object.entries(update)) {
@@ -82,6 +84,13 @@ const saveRuntimeSettings = async (newSettings, knex = getDatabaseKnex()) => {
         })
         .onConflict('key')
         .merge(['value', 'updated_at']);
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(update, 'tagLanguage') &&
+      update.tagLanguage !== previousTagLanguage
+    ) {
+      await syncTagNamesFromTranslations(trx, update.tagLanguage);
     }
 
     if (hasRootFolders) {

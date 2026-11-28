@@ -21,7 +21,7 @@ INSERT OR IGNORE INTO t_app_setting (key, value) VALUES
   ('rewindSeekTime', '5'),
   ('forwardSeekTime', '30'),
   ('expiresIn', '2592000'),
-  ('tagLanguage', '"zh-CN"'),
+  ('tagLanguage', '"zh-cn"'),
   ('retry', '5'),
   ('dlsiteTimeout', '10000'),
   ('hvdbTimeout', '10000'),

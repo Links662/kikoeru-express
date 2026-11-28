@@ -45,7 +45,7 @@ const runtimeDefaults = {
   recentCount: 20,
   rewindSeekTime: 5,
   forwardSeekTime: 30,
-  tagLanguage: 'zh-CN',
+  tagLanguage: 'zh-cn',
   retry: 5,
   dlsiteTimeout: 10000,
   metadataRefreshBatchSize: 100,

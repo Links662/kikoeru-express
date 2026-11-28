@@ -16,6 +16,7 @@ const child_process = require('child_process');
 const SCANNER_ENTRY = {
   scan: path.join(__dirname, '../filesystem/scanWorker.js'),
   update: path.join(__dirname, '../filesystem/updateWorker.js'),
+  tags: path.join(__dirname, '../filesystem/tagScanWorker.js'),
   subtitles: path.join(__dirname, '../filesystem/subtitleScanWorker.js'),
   covers: path.join(__dirname, '../filesystem/coverScanWorker.js')
 };
@@ -94,7 +95,7 @@ const resetSnapshot = () => {
 
 /**
  * 启动扫描 / 刷新 / 封面维护子进程；已有进程在跑时忽略
- * @param {'scan'|'update'|'subtitles'|'covers'} kind
+ * @param {'scan'|'update'|'tags'|'subtitles'|'covers'} kind
  * @returns {boolean} 是否真的启动了新进程
  */
 const startScan = (kind = 'scan') => {

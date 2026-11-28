@@ -34,6 +34,16 @@ describe('SQLite runtime settings', function () {
       table.integer('root_folder_id').notNullable();
       table.string('dir').notNullable();
     });
+    await knex.schema.createTable('t_tag', table => {
+      table.increments('id');
+      table.string('name').notNullable();
+    });
+    await knex.schema.createTable('t_tag_translation', table => {
+      table.integer('id').notNullable();
+      table.string('locale').notNullable();
+      table.string('name').notNullable();
+      table.primary(['id', 'locale']);
+    });
   });
 
   afterEach(async function () {
@@ -110,6 +120,29 @@ describe('SQLite runtime settings', function () {
       root_folder_id: rootId,
       dir: 'RJ123456'
     });
+  });
+
+  it('writes translations into t_tag only when the global language changes', async function () {
+    await knex('t_tag').insert({ id: 14, name: '旧名称' });
+    await knex('t_tag').insert({ id: 15, name: '旧名称' });
+    await knex('t_tag_translation').insert([
+      { id: 14, locale: 'ja-jp', name: '恋人同士' },
+      { id: 14, locale: 'zh-cn', name: '情侣' },
+      { id: 14, locale: 'zh-tw', name: '情侶/戀人' },
+      { id: 15, locale: 'ja-jp', name: '恋人同士' }
+    ]);
+
+    await saveRuntimeSettings({ tagLanguage: 'zh-tw' }, knex);
+    expect((await knex('t_tag').where('id', 14).first()).name).to.equal('情侶/戀人');
+    expect((await knex('t_tag').where('id', 15).first()).name).to.equal('Error');
+
+    await knex('t_tag_translation')
+      .where({ id: 14, locale: 'zh-tw' })
+      .update({ name: '新譯名' });
+    await saveRuntimeSettings({ tagLanguage: 'zh-tw', pageSize: 24 }, knex);
+
+    expect(config.tagLanguage).to.equal('zh-tw');
+    expect((await knex('t_tag').where('id', 14).first()).name).to.equal('情侶/戀人');
   });
 
   it('refuses to load when the migration has not been applied', async function () {
