@@ -85,7 +85,7 @@ const insertWorkMetadata = (work, database = knex) => database.transaction(trx =
       rate_average_2dp: work.rate_average_2dp || 0,
       rate_count_detail: JSON.stringify(work.rate_count_detail || []),
       rank: work.rank ? JSON.stringify(work.rank) : null,
-
+      update_time: knex.fn.now(),
       insert_time: knex.fn.now()
     }))
   .then(async () => {
@@ -138,6 +138,7 @@ const applyWorkMetadataUpdate = async (trx, work, options = {}) => {
   if (work.rank !== undefined) {
     dynamicUpdate.rank = work.rank ? JSON.stringify(work.rank) : null;
   }
+  dynamicUpdate.update_time = options.updateTime || trx.fn.now();
 
   if (Object.keys(dynamicUpdate).length) {
     await trx('t_work')
@@ -206,6 +207,29 @@ const applyWorkMetadataUpdate = async (trx, work, options = {}) => {
 const updateWorkMetadata = (work, options = {}) => knex.transaction(
   trx => applyWorkMetadataUpdate(trx, work, options)
 );
+
+const getWorksDueForMetadataRefresh = async ({
+  batchSize,
+  staleDays,
+  now = Date.now()
+} = {}, database = knex) => {
+  const normalizedBatchSize = Math.max(1, Number(batchSize) || 1);
+  const normalizedStaleDays = Math.max(0, Number(staleDays) || 0);
+  const cutoff = new Date(
+    now - normalizedStaleDays * 24 * 60 * 60 * 1000
+  ).toISOString().replace('T', ' ').slice(0, 19);
+
+  return database('t_work')
+    .select('id')
+    .where(function () {
+      this.whereNull('update_time')
+        .orWhere('update_time', '<=', cutoff);
+    })
+    .orderByRaw('CASE WHEN update_time IS NULL THEN 0 ELSE 1 END')
+    .orderBy('update_time', 'asc')
+    .orderBy('id', 'asc')
+    .limit(normalizedBatchSize);
+};
 
 const updateWorkSubtitle = (id, subtitle) => knex('t_work')
   .where('id', '=', id)
@@ -986,7 +1010,7 @@ module.exports = {
   knex, applyWorkFilters, applyWorkConditions, insertWorkMetadata, getWorkMetadata, removeWork,
   cleanupOrphanEntities,
   getWorksByConditions, getWorkConditionLabels,
-  applyWorkMetadataUpdate, updateWorkMetadata,
+  applyWorkMetadataUpdate, updateWorkMetadata, getWorksDueForMetadataRefresh,
   updateWorkSubtitle,
   getLabels, getLabelsPage, getMetadata, getFavourites, setFavourite,
   getRecentWorkIds,

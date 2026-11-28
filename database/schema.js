@@ -37,10 +37,12 @@ const createCoreTables = async () => {
       table.float('rate_average_2dp');
       table.text('rate_count_detail');
       table.text('rank');
+      table.timestamp('update_time').defaultTo(knex.fn.now());
       table.timestamp('insert_time').defaultTo(knex.fn.now()); // 补全视图中引用的字段
       table.foreign('circle_id').references('id').inTable('t_circle').onUpdate('CASCADE').onDelete('CASCADE');
       table.index(['circle_id', 'release'], 't_work_index');
       table.index('root_folder_id', 'idx_t_work_root_folder_id');
+      table.index(['update_time', 'id'], 'idx_t_work_update_time');
     })
     .createTable('t_tag', (table) => {
       table.increments();
@@ -128,7 +130,7 @@ const createView = async () => {
       'w.id', 'w.title', 'w.circle_id',
       knex.raw('c.name AS circle_name'),
       'w.nsfw', 'w.subtitle', 'w.release', 'w.dl_count', 'w.price', 'w.review_count', 'w.rate_count',
-      'w.rate_average_2dp', 'w.rate_count_detail', 'w.rank', 'w.insert_time',
+      'w.rate_average_2dp', 'w.rate_count_detail', 'w.rank', 'w.insert_time', 'w.update_time',
       knex.raw(`(
         SELECT json_object('vas', json_group_array(json_object('id', v.id, 'name', v.name)))
         FROM r_va_work rv

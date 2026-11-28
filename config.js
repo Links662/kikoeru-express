@@ -48,6 +48,8 @@ const runtimeDefaults = {
   tagLanguage: 'zh-CN',
   retry: 5,
   dlsiteTimeout: 10000,
+  metadataRefreshBatchSize: 100,
+  metadataRefreshStaleDays: 7,
   hvdbTimeout: 10000,
   retryDelay: 2000,
   httpProxyHost: '',

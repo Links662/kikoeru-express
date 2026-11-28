@@ -13,6 +13,40 @@ const STATIC_METADATA_SOURCES = {
 };
 const SUPPORTED_TAG_LANGUAGES = new Set(['ja-JP', 'zh-TW', 'zh-CN']);
 
+const dlsiteBlockedError = message => Object.assign(new Error(message), {
+  code: 'DLSITE_BLOCKED',
+  isDlsiteBlocked: true
+});
+
+const getResponseStatus = error => (
+  error && error.response && Number(error.response.status)
+) || null;
+
+const isDlsiteBlockedError = error => Boolean(
+  error && (
+    error.code === 'DLSITE_BLOCKED' ||
+    error.isDlsiteBlocked ||
+    [401, 403, 429].includes(getResponseStatus(error))
+  )
+);
+
+const isDlsiteChallengeResponse = data => (
+  typeof data === 'string' &&
+  /(?:cloudflare|access denied|just a moment|attention required)/i.test(data)
+);
+
+const requestError = (error, url, label) => {
+  const status = error && error.response && error.response.status;
+  const wrapped = new Error(status
+    ? `${label} (${url}), received: ${status}.`
+    : `${label} (${url}): ${error.message}`);
+  if (isDlsiteBlockedError(error)) {
+    wrapped.code = 'DLSITE_BLOCKED';
+    wrapped.isDlsiteBlocked = true;
+  }
+  return wrapped;
+};
+
 const getTagLanguage = (language) => {
   const value = language || DEFAULT_TAG_LANGUAGE;
   if (!SUPPORTED_TAG_LANGUAGES.has(value)) {
@@ -148,7 +182,9 @@ const scrapeHtmlWorkMetadataFromDLsite = (id, language) => new Promise((resolve,
         });
 
       if (work.tags.length === 0 && work.vas.length === 0) {
-        reject(new Error('Couldn\'t parse data from DLsite work page.'));
+        reject(isDlsiteChallengeResponse(data)
+          ? dlsiteBlockedError('DLsite returned a challenge page.')
+          : new Error('Couldn\'t parse data from DLsite work page.'));
       } else {
         resolve(work);
       }
@@ -156,7 +192,7 @@ const scrapeHtmlWorkMetadataFromDLsite = (id, language) => new Promise((resolve,
     .catch((error) => {
       if (error.response) {
         // 请求已发出，但服务器响应的状态码不在 2xx 范围内
-        reject(new Error(`Couldn't request work page HTML (${url}), received: ${error.response.status}.`));
+        reject(requestError(error, url, 'Couldn\'t request work page HTML'));
       } else {
         reject(error);
       }
@@ -175,6 +211,9 @@ const scrapeProductWorkMetadataFromDLsite = (id, language) => new Promise((resol
 
   axios.retryGet(url, { retry: {} })
     .then((response) => {
+      if (typeof response.data === 'string' && /^\s*</.test(response.data)) {
+        throw dlsiteBlockedError('DLsite product API returned HTML instead of JSON.');
+      }
       const item = Array.isArray(response.data) ? response.data[0] : response.data;
       if (!item || typeof item !== 'object') {
         throw new Error(`Couldn't parse data from DLsite product API for ${rjLabel}.`);
@@ -337,7 +376,7 @@ const scrapeProductWorkMetadataFromDLsite = (id, language) => new Promise((resol
     .catch((error) => {
       if (error.response) {
         // 请求已发出，但服务器响应的状态码不在 2xx 范围内
-        reject(new Error(`Couldn't request DLsite product API (${url}), received: ${error.response.status}.`));
+        reject(requestError(error, url, 'Couldn\'t request DLsite product API'));
       } else {
         reject(error);
       }
@@ -354,6 +393,9 @@ const scrapeDynamicWorkMetadataFromDLsite = id => new Promise((resolve, reject) 
 
   axios.retryGet(url, { retry: {} })
     .then((response) => {
+      if (typeof response.data === 'string' && /^\s*</.test(response.data)) {
+        throw dlsiteBlockedError('DLsite dynamic API returned HTML instead of JSON.');
+      }
       const data = response.data && response.data[rjLabel];
       if (!data) {
         throw new Error(`DLsite dynamic API returned no data for ${rjLabel}.`);
@@ -376,7 +418,7 @@ const scrapeDynamicWorkMetadataFromDLsite = id => new Promise((resolve, reject) 
     .catch((error) => {
       if (error.response) {
         // 请求已发出，但服务器响应的状态码不在 2xx 范围内
-        reject(new Error(`Couldn't request DLsite dynamic API (${url}), received: ${error.response.status}.`));
+        reject(requestError(error, url, 'Couldn\'t request DLsite dynamic API'));
       } else {
         reject(error);
       }
@@ -434,17 +476,15 @@ const scrapeWorkMetadataFromDLsite = (id, language, options = {}) => {
       return Promise.reject(new Error(`Unknown DLsite metadata source: ${source}.`));
   }
 
-  return Promise.all([
-    scrapeStaticMetadata(id, language),
-    scrapeDynamicWorkMetadataFromDLsite(id).catch((error) => {
-      // 动态接口只负责补充销量/评论等字段，失败时继续使用静态数据。
-      console.warn(`[${rjLabel}] DLsite 动态元数据抓取失败，继续使用静态数据: ${error.message}`);
-      return {};
-    })
-  ])
-    .then(([staticMetadata, dynamicMetadata]) => (
-      Object.assign({}, staticMetadata, dynamicMetadata)
-    ))
+  return scrapeStaticMetadata(id, language)
+    .then(staticMetadata => scrapeDynamicWorkMetadataFromDLsite(id)
+      .catch((error) => {
+        if (isDlsiteBlockedError(error)) throw error;
+        // 动态接口只负责补充销量/评论等字段，失败时继续使用静态数据。
+        console.warn(`[${rjLabel}] DLsite 动态元数据抓取失败，继续使用静态数据: ${error.message}`);
+        return {};
+      })
+      .then(dynamicMetadata => Object.assign({}, staticMetadata, dynamicMetadata)))
     .then(work => fillMissingVasFromHVDB(id, work));
 };
 
@@ -452,5 +492,7 @@ const scrapeWorkMetadataFromDLsite = (id, language, options = {}) => {
 module.exports = {
   scrapeWorkMetadataFromDLsite,
   scrapeHtmlWorkMetadataFromDLsite,
-  scrapeProductWorkMetadataFromDLsite
+  scrapeProductWorkMetadataFromDLsite,
+  isDlsiteBlockedError,
+  isDlsiteChallengeResponse
 };

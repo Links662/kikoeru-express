@@ -35,6 +35,7 @@ describe('work metadata updates', function () {
         table.float('rate_average_2dp');
         table.text('rate_count_detail');
         table.text('rank');
+        table.timestamp('update_time');
       })
       .createTable('t_tag', table => {
         table.increments('id').primary();
@@ -110,7 +111,7 @@ describe('work metadata updates', function () {
         { id: 4, name: 'New tag' }
       ],
       vas: [{ name: 'New VA' }]
-    }), { refreshAll: true });
+    }), { refreshAll: true, updateTime: '2026-11-28 08:30:00' });
 
     const work = await knex('t_work').where('id', 100).first();
     expect(work).to.include({
@@ -121,7 +122,8 @@ describe('work metadata updates', function () {
       dl_count: 42,
       price: 550,
       review_count: 7,
-      rate_count: 8
+      rate_count: 8,
+      update_time: '2026-11-28 08:30:00'
     });
     expect(work.rate_average_2dp).to.equal(4.5);
     expect(JSON.parse(work.rate_count_detail)).to.deep.equal([

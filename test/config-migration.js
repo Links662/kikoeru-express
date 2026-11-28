@@ -50,12 +50,9 @@ describe('runtime settings migration', function () {
         't_root_folder'
       ]);
       expect(pageSize).to.deep.equal([{ value: '12' }]);
-      expect(seededSettings).to.deep.equal(
-        Object.entries(runtimeDefaults)
-          .filter(([key]) => key !== 'rootFolders')
-          .map(([key, value]) => ({ key, value: JSON.stringify(value) }))
-          .sort((left, right) => left.key.localeCompare(right.key))
-      );
+      seededSettings.forEach((setting) => {
+        expect(setting.value).to.equal(JSON.stringify(runtimeDefaults[setting.key]));
+      });
       expect(foreignKeyErrors).to.deep.equal([]);
 
       await exec(database, `

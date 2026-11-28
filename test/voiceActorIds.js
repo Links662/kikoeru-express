@@ -36,6 +36,7 @@ describe('voice actor integer IDs', function () {
         table.float('rate_average_2dp');
         table.text('rate_count_detail');
         table.text('rank');
+        table.timestamp('update_time').defaultTo(knex.fn.now());
         table.timestamp('insert_time').defaultTo(knex.fn.now());
       })
       .createTable('t_tag', table => {
@@ -93,5 +94,8 @@ describe('voice actor integer IDs', function () {
       { va_id: 1, work_id: 101 },
       { va_id: 2, work_id: 101 }
     ]);
+
+    const works = await knex('t_work').select('update_time');
+    works.forEach(work => expect(work.update_time).to.match(/^\d{4}-\d{2}-\d{2} /));
   });
 });
