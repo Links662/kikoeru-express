@@ -22,6 +22,7 @@ const { initApp }= require('./database/init');
 const initSocket = require('./socket');
 const { config } = require('./config');
 const { loadRuntimeSettings } = require('./settings');
+const scanScheduler = require('./state/scanScheduler');
 const passwordReset = require('./routes/passwordReset');
 const api = require('./api');
 const app = express();
@@ -97,6 +98,7 @@ const initializeAndListen = async () => {
   // websocket 握手依赖 http 服务（重置模式下不初始化）
   if (!resetMode) {
     initSocket(server);
+    await scanScheduler.start();
   }
 
   const listenPort = process.env.PORT || config.listenPort || 8888;

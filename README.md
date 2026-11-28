@@ -15,6 +15,7 @@
 - 收藏社团 / 标签 / 声优，收藏数据按用户隔离
 - 封面维护：补齐缺失封面、重建过期缩略图、把本地生成的降级图升级为 DLsite 原图
 - 字幕状态：按作品字段 `subtitle` 展示，支持后台重新扫描 LRC
+- 扫描自动化：在扫描页为五种扫描操作配置五段 Cron，按容器 `TZ` 时区执行，自动复用扫描进度、日志和单进程互斥
 
 ## 安装
 
@@ -47,6 +48,7 @@ Docker 构建、前端打包和 Compose 编排由独立的 Kikoeru 部署仓库�
 - jsonwebtoken (用户认证)
 - crypto.scrypt (密码哈希，Node 内置，无需原生编译)
 - socket.io (用于将扫描存储位置的结果实时传给客户端)
+- cron-parser (校验扫描自动化 Cron 并计算下次执行时间)
 - lrc-file-parser (解析播放LRC歌词文件)
 - jschardet (判断文本文件编码)
 - jimp (本地生成封面缩略图)
@@ -63,7 +65,8 @@ Docker 构建、前端打包和 Compose 编排由独立的 Kikoeru 部署仓库�
 ├── dist/                    # 可选：本地或部署时生成的前端构建产物
 ├── filesystem/              # 存放扫描相关代码
 ├── state/                   # 存放常驻进程级状态
-│   └── scannerState.js      # 扫描子进程的唯一状态源，供 socket 广播与 /api/scanner/state 查询
+│   ├── scannerState.js      # 扫描子进程的唯一状态源，供 socket 广播与 /api/scanner/state 查询
+│   └── scanScheduler.js     # 扫描自动化的 Cron 调度和下次执行时间
 ├── scraper/                 # 存放爬虫相关代码
 ├── sqlite/                  # 存放 sqlite 数据库文件
 ├── static/                  # 存放静态资源

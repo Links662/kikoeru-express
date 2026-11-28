@@ -20,6 +20,7 @@ const SCANNER_ENTRY = {
   subtitles: path.join(__dirname, '../filesystem/subtitleScanWorker.js'),
   covers: path.join(__dirname, '../filesystem/coverScanWorker.js')
 };
+const SCAN_KINDS = Object.freeze(Object.keys(SCANNER_ENTRY));
 
 let scanner = null;
 
@@ -168,6 +169,7 @@ const getSnapshot = () => ({
 });
 
 module.exports = {
+  SCAN_KINDS,
   onEvent,
   startScan,
   killScan,

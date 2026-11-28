@@ -4,6 +4,30 @@
 
 # 数据库版本变更记录
 
+## 20261128 - 扫描自动化
+
+迁移文件：`20261128_add_scan_automations.sql`
+
+执行前提：数据库已执行完现有 `20261128` 系列迁移。
+
+### 结构变更
+
+- 新增 `t_scan_automation`，保存扫描操作、五段 Cron、启用状态和上次触发结果。
+- 同一扫描操作与 Cron 组合不可重复。
+- 新数据库基线同步创建该表。
+
+### 手动迁移步骤
+
+1. 停止 Kikoeru 服务并备份 `sqlite/db.sqlite3`。
+2. 对数据库执行 `20261128_add_scan_automations.sql`。
+3. 启动服务，在管理后台的扫描页新增一条自动化配置并确认下次执行时间。
+
+### 验证
+
+- 执行 `PRAGMA foreign_key_check;`，结果应为空。
+- 确认 `t_scan_automation` 与索引 `idx_scan_automation_type_cron` 存在。
+- 确认手动扫描与自动化触发仍共享同一个扫描进度和单进程互斥。
+
 ## 20261128 - 移除标签翻译外键
 
 迁移文件：`20261128_drop_tag_translation_foreign_key.sql`

@@ -95,6 +95,20 @@ const createCoreTables = async () => {
       table.string('key').primary();
       table.text('value').notNullable();
       table.timestamp('updated_at').notNullable().defaultTo(knex.fn.now());
+    })
+    .createTable('t_scan_automation', (table) => {
+      table.increments('id');
+      table.string('type', 32).notNullable();
+      table.string('cron_expression', 128).notNullable();
+      table.boolean('enabled').notNullable().defaultTo(true);
+      table.timestamp('last_triggered_at');
+      table.string('last_trigger_status', 32);
+      table.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
+      table.timestamp('updated_at').notNullable().defaultTo(knex.fn.now());
+      table.unique(
+        ['type', 'cron_expression'],
+        { indexName: 'idx_scan_automation_type_cron' }
+      );
     });
 
   const settingRows = Object.entries(runtimeDefaults)

@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { config } = require('./config');
 const { getUserState } = require('./database/db');
 const scannerState = require('./state/scannerState');
+const scanScheduler = require('./state/scanScheduler');
 const { registerUserSocket, unregisterUserSocket } = require('./state/userSockets');
 
 const ADMIN_ROOM = 'administrator';
@@ -60,6 +61,9 @@ const initSocket = (server) => {
 
   // 扫描进度只广播给管理员房间，普通用户不会收到管理后台的数据。
   scannerState.onEvent((event, payload) => {
+    io.to(ADMIN_ROOM).emit(event, payload);
+  });
+  scanScheduler.onEvent((event, payload) => {
     io.to(ADMIN_ROOM).emit(event, payload);
   });
 

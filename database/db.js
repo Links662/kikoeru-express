@@ -1091,6 +1091,87 @@ const deleteHistoryByUserName = async (username) => knex.transaction(async(trx) 
   return
 })
 
+const mapScanAutomationRow = row => row && ({
+  id: Number(row.id),
+  type: row.type,
+  cronExpression: row.cron_expression,
+  enabled: Number(row.enabled) === 1,
+  lastTriggeredAt: row.last_triggered_at || null,
+  lastTriggerStatus: row.last_trigger_status || null,
+  createdAt: row.created_at || null,
+  updatedAt: row.updated_at || null
+});
+
+const getScanAutomations = async (database = knex) => {
+  const rows = await database('t_scan_automation')
+    .select(
+      'id',
+      'type',
+      'cron_expression',
+      'enabled',
+      'last_triggered_at',
+      'last_trigger_status',
+      'created_at',
+      'updated_at'
+    )
+    .orderBy('id', 'asc');
+  return rows.map(mapScanAutomationRow);
+};
+
+const getScanAutomationById = async (id, database = knex) => {
+  const row = await database('t_scan_automation')
+    .where('id', '=', Number(id))
+    .first();
+  return mapScanAutomationRow(row) || null;
+};
+
+const createScanAutomation = async ({ type, cronExpression, enabled = true }, database = knex) => {
+  const insertedIds = await database('t_scan_automation').insert({
+    type,
+    cron_expression: cronExpression,
+    enabled: enabled ? 1 : 0,
+    updated_at: database.fn.now()
+  });
+  return getScanAutomationById(Number(insertedIds[0]), database);
+};
+
+const updateScanAutomation = async (id, changes, database = knex) => {
+  const update = {};
+  if (Object.prototype.hasOwnProperty.call(changes, 'type')) {
+    update.type = changes.type;
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'cronExpression')) {
+    update.cron_expression = changes.cronExpression;
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'enabled')) {
+    update.enabled = changes.enabled ? 1 : 0;
+  }
+
+  update.updated_at = database.fn.now();
+  const changed = await database('t_scan_automation')
+    .where('id', '=', Number(id))
+    .update(update);
+  if (!changed) return null;
+  return getScanAutomationById(id, database);
+};
+
+const deleteScanAutomation = async (id, database = knex) => {
+  const deleted = await database('t_scan_automation')
+    .where('id', '=', Number(id))
+    .del();
+  return deleted > 0;
+};
+
+const updateScanAutomationTrigger = (id, { status, triggeredAt }, database = knex) => (
+  database('t_scan_automation')
+    .where('id', '=', Number(id))
+    .update({
+      last_trigger_status: status,
+      last_triggered_at: triggeredAt,
+      updated_at: database.fn.now()
+    })
+);
+
 module.exports = {
   knex, applyWorkFilters, applyWorkConditions, insertWorkMetadata, getWorkMetadata, removeWork,
   cleanupOrphanEntities,
@@ -1105,5 +1186,7 @@ module.exports = {
   getUserState, setUserDisabled,
   getWorksWithReviews, updateUserReview, deleteUserReview,
   insertHistory, getHistoryByWorkId, getHistoryGroupByWorkId,deleteHistoryByUserName,
+  getScanAutomations, getScanAutomationById, createScanAutomation,
+  updateScanAutomation, deleteScanAutomation, updateScanAutomationTrigger,
   databaseExist
 };

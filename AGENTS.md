@@ -40,6 +40,7 @@ npm test
 | `db-migrations/` | 现有数据库需要手动执行的 SQL 升级脚本 |
 | `filesystem/` | 文件列表、封面资源、扫描子进程 |
 | `state/scannerState.js` | 扫描子进程生命周期和进度的唯一状态源 |
+| `state/scanScheduler.js` | 扫描自动化的持久化配置、Cron 定时触发和下次执行时间 |
 | `scraper/` | DLsite/HVDB 抓取和重试 |
 | `test/` | Mocha 测试 |
 
@@ -51,6 +52,7 @@ npm test
 4. 管理员扫描页面通过 Socket.IO 发送 `PERFORM_SCAN`、`PERFORM_UPDATE`、`PERFORM_SUBTITLE_SCAN`、`PERFORM_COVER_REPAIR`、`KILL_SCAN_PROCESS`。
 5. `state/scannerState.js` 只允许一个子进程运行，保存进度快照，并向所有 Socket 客户端广播事件。
 6. `GET /api/scanner/state` 仅作为 Socket 不可用时的管理员轮询兜底。
+7. `state/scanScheduler.js` 在正常服务启动后加载启用的自动化配置，到点后只能调用 `scannerState.startScan()`；扫描忙时跳过本次触发。
 
 ## 数据库与迁移（强制）
 
@@ -86,6 +88,8 @@ npm test
 - worker 通过 `process.send()` 上报 `SCAN_TASKS`、`SCAN_FAILED_TASKS`、`SCAN_MAIN_LOGS`、`SCAN_RESULTS`、`SCAN_FINISHED` 等事件。
 - 所有扫描 worker 都必须由服务端通过 `scannerState.startScan()` fork；没有 IPC 时会主动退出。
 - 不要把扫描进程状态分散到路由、Socket 或组件中。新增扫描类型时修改 `SCANNER_ENTRY`，继续复用 `scannerState.startScan()`。
+- 自动化配置保存在 `t_scan_automation`；CRUD 走管理员 `/api/scanner/automations`，配置变更后立即重载内存定时器。
+- Cron 只接受五段“分 时 日 月 周”，按容器环境变量 `TZ` 解释；服务停机期间错过的时间不补跑。
 - 单个作品失败不能中断整场扫描；沿用现有计数、失败任务和日志汇总方式。
 - 封面写入使用 `.part` 临时文件、JPEG 头校验和原子重命名。不要直接覆盖正式封面。
 
