@@ -91,7 +91,12 @@ const createScanScheduler = (options = {}) => {
     const triggeredAt = now().toISOString();
     let status;
     try {
-      status = scanner.startScan(automation.type) ? 'started' : 'skipped_busy';
+      status = scanner.startScan(automation.type, {
+        type: 'automation',
+        automationId: automation.id
+      })
+        ? 'started'
+        : 'skipped_busy';
     } catch (err) {
       status = 'error';
       console.error(`扫描自动化 ${id} 启动失败:`, err);

@@ -103,6 +103,7 @@ const initSocket = (server) => {
 
     onAdministratorEvent('ON_SCANNER_PAGE', () => {
       // 防止用户在扫描过程中刷新页面
+      socket.emit('SCAN_STATE', scannerState.getSnapshot());
       scannerState.requestInitState();
     });
 

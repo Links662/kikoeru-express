@@ -25,8 +25,8 @@ const createHarness = (startScanResult = true) => {
     }
   };
   const scanner = {
-    startScan: kind => {
-      scannerCalls.push(kind);
+    startScan: (kind, source) => {
+      scannerCalls.push({ kind, source });
       return startScanResult;
     }
   };
@@ -64,7 +64,13 @@ describe('scan scheduler', function () {
     harness.advanceTo('2026-11-28T19:00:00.000Z');
     await harness.scheduled[0].callback();
 
-    expect(harness.scannerCalls).to.deep.equal(['subtitles']);
+    expect(harness.scannerCalls).to.deep.equal([{
+      kind: 'subtitles',
+      source: {
+        type: 'automation',
+        automationId: 7
+      }
+    }]);
     expect(harness.triggerUpdates[0]).to.include({
       id: 7,
       status: 'started',

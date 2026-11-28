@@ -26,6 +26,11 @@ let scanner = null;
 
 // 与 socket 广播内容保持一致的进度快照
 const snapshot = {
+  kind: null,
+  source: null,
+  startedAt: null,
+  finishedAt: null,
+  phase: null,
   status: null, // null(本次进程内还没扫过) | 'running' | 'finished' | 'error'
   tasks: [],
   failedTasks: [],
@@ -42,6 +47,23 @@ const onEvent = (handler) => {
   listeners.push(handler);
 };
 
+const getLatestPhase = (logs = []) => {
+  for (let index = logs.length - 1; index >= 0; index -= 1) {
+    if (logs[index].type === 'phase') return logs[index].message;
+  }
+  return null;
+};
+
+const normalizeSource = (source) => {
+  if (source && source.type === 'automation') {
+    return {
+      type: 'automation',
+      automationId: source.automationId
+    };
+  }
+  return { type: 'manual' };
+};
+
 const applyEvent = (event, payload) => {
   switch (event) {
     case 'SCAN_TASKS':
@@ -52,6 +74,7 @@ const applyEvent = (event, payload) => {
       break;
     case 'SCAN_MAIN_LOGS':
       snapshot.mainLogs = payload.mainLogs;
+      snapshot.phase = getLatestPhase(payload.mainLogs);
       break;
     case 'SCAN_RESULTS':
       snapshot.results = payload.results;
@@ -63,14 +86,17 @@ const applyEvent = (event, payload) => {
       snapshot.failedTasks = payload.failedTasks;
       snapshot.mainLogs = payload.mainLogs;
       snapshot.results = payload.results;
+      snapshot.phase = getLatestPhase(payload.mainLogs);
       break;
     case 'SCAN_FINISHED':
       snapshot.message = payload.message;
       snapshot.messageLevel = payload.level || 'info';
       snapshot.status = 'finished';
+      snapshot.finishedAt = new Date().toISOString();
       break;
     case 'SCAN_ERROR':
       snapshot.status = 'error';
+      snapshot.finishedAt = new Date().toISOString();
       break;
     default:
       break;
@@ -84,8 +110,13 @@ const publish = (event, payload) => {
   });
 };
 
-const resetSnapshot = () => {
+const resetSnapshot = (kind, source) => {
   snapshot.status = 'running';
+  snapshot.kind = kind;
+  snapshot.source = source;
+  snapshot.startedAt = new Date().toISOString();
+  snapshot.finishedAt = null;
+  snapshot.phase = null;
   snapshot.tasks = [];
   snapshot.failedTasks = [];
   snapshot.mainLogs = [];
@@ -99,12 +130,15 @@ const resetSnapshot = () => {
  * @param {'scan'|'update'|'tags'|'subtitles'|'covers'} kind
  * @returns {boolean} 是否真的启动了新进程
  */
-const startScan = (kind = 'scan') => {
+const startScan = (kind = 'scan', source = { type: 'manual' }) => {
   if (scanner) return false;
 
-  resetSnapshot();
+  const normalizedKind = Object.prototype.hasOwnProperty.call(SCANNER_ENTRY, kind)
+    ? kind
+    : 'scan';
+  resetSnapshot(normalizedKind, normalizeSource(source));
 
-  const entry = SCANNER_ENTRY[kind] || SCANNER_ENTRY.scan;
+  const entry = SCANNER_ENTRY[normalizedKind];
   scanner = child_process.fork(entry, [], {
     silent: false,
     env: {
@@ -115,7 +149,7 @@ const startScan = (kind = 'scan') => {
 
   scanner.on('exit', (code) => {
     scanner = null;
-    if (code) {
+    if (code && snapshot.status !== 'finished' && snapshot.status !== 'error') {
       publish('SCAN_ERROR');
     }
   });
@@ -132,6 +166,8 @@ const startScan = (kind = 'scan') => {
       publish(m.event, m.payload);
     }
   });
+
+  publish('SCAN_STARTED', getSnapshot());
 
   return true;
 };
@@ -158,15 +194,31 @@ const requestInitState = () => {
   return true;
 };
 
-const getSnapshot = () => ({
-  status: snapshot.status,
-  tasks: snapshot.tasks,
-  failedTasks: snapshot.failedTasks,
-  mainLogs: snapshot.mainLogs,
-  results: snapshot.results,
-  message: snapshot.message,
-  messageLevel: snapshot.messageLevel
-});
+const getSnapshot = () => {
+  const results = snapshot.results;
+  return {
+    status: snapshot.status,
+    kind: snapshot.kind,
+    source: snapshot.source,
+    startedAt: snapshot.startedAt,
+    finishedAt: snapshot.finishedAt,
+    phase: snapshot.phase,
+    counters: {
+      completed: results.length,
+      running: snapshot.tasks.length,
+      failed: results.filter(result => result.result === 'failed').length,
+      skipped: results.filter(result => result.result === 'skipped').length,
+      blocked: results.filter(result => result.result === 'blocked').length,
+      total: null
+    },
+    tasks: snapshot.tasks,
+    failedTasks: snapshot.failedTasks,
+    mainLogs: snapshot.mainLogs,
+    results,
+    message: snapshot.message,
+    messageLevel: snapshot.messageLevel
+  };
+};
 
 module.exports = {
   SCAN_KINDS,
