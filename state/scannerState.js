@@ -46,19 +46,19 @@ const publish = (event, payload) => {
  * @param {'scan'|'update'|'tags'|'subtitles'|'covers'} kind
  * @returns {boolean} 是否真的启动了新进程
  */
-const startScan = (kind = 'scan', source = { type: 'manual' }) => {
+const startScan = (kind, source = { type: 'manual' }) => {
+  if (!Object.prototype.hasOwnProperty.call(SCANNER_ENTRY, kind)) {
+    throw new Error(`未知扫描类型: ${kind}`);
+  }
   if (scanner) return false;
 
-  const normalizedKind = Object.prototype.hasOwnProperty.call(SCANNER_ENTRY, kind)
-    ? kind
-    : 'scan';
   snapshot = resetScanSnapshot(
     snapshot,
-    normalizedKind,
+    kind,
     normalizeSource(source)
   );
 
-  const entry = SCANNER_ENTRY[normalizedKind];
+  const entry = SCANNER_ENTRY[kind];
   scanner = child_process.fork(entry, [], {
     silent: false,
     env: {
