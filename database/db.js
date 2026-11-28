@@ -336,9 +336,28 @@ const cleanupOrphans = async (trx, circle, tags, vas)  => {
 };
 
 /**
- * 删除没有任何作品关联的声优和社团，并清理它们的收藏记录。
+ * 删除没有任何作品关联的标签、声优和社团，并清理它们的收藏记录。
+ * 标签翻译独立保留，不随孤立标签删除。
  */
 const cleanupOrphanEntities = async (trx) => {
+  const orphanTagIds = await trx('t_tag as tag')
+    .select('tag.id')
+    .whereNotExists(function () {
+      this.select(1)
+        .from('r_tag_work as relation')
+        .whereRaw('relation.tag_id = tag.id');
+    })
+    .pluck('tag.id');
+
+  if (orphanTagIds.length > 0) {
+    const stringIds = orphanTagIds.map(id => String(id));
+    await trx('t_favourite')
+      .where('field', '=', 'tag')
+      .whereIn('item_id', stringIds)
+      .del();
+    await trx('t_tag').whereIn('id', orphanTagIds).del();
+  }
+
   const orphanVaIds = await trx('t_va as va')
     .select('va.id')
     .whereNotExists(function () {
@@ -376,6 +395,7 @@ const cleanupOrphanEntities = async (trx) => {
   }
 
   return {
+    tagCount: orphanTagIds.length,
     circleCount: orphanCircleIds.length,
     vaCount: orphanVaIds.length
   };
